@@ -1,0 +1,46 @@
+Archive member included to satisfy reference by file (symbol)
+
+foo.a(bar.c.obj)
+                              (baz)
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+iram0_0_seg      0x40080000         0x00020000         xr
+dram0_0_seg      0x3ffb0000         0x0002c200         rw
+drom0_0_seg      0x3f400020         0x003fffe0         r
+iram0_2_seg      0x400d0020         0x0032ffe0         xr
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+LOAD foo.o
+                0x00000000                        SOME_CONST = 0x1
+
+.iram0.text     0x40080000        0x40
+                0x40080000                        _iram_text_start = ABSOLUTE (.)
+ *(.literal .text)
+ .text.a        0x40080000        0x10 esp-idf/main/libmain.a(a.c.obj)
+                0x40080000                a_symbol
+ .text.b        0x40080010        0x20 esp-idf/efuse/libefuse.a(b.c.obj)
+ .text.c        0x40080030        0x8
+ *fill*         0x40080038        0x8 
+
+.dram0.bss      0x3ffb0000        0x20
+ .bss.buf       0x3ffb0000        0x18 esp-idf/main/libmain.a(c.c.obj)
+ *fill*         0x3ffb0018        0x8 
+
+.flash.rodata   0x3f400020        0x30
+ .rodata.s      0x3f400020        0x30 esp-idf/main/libmain.a(d.c.obj)
+                                 0x28 (size before relaxing)
+
+.flash.text     0x400d0020        0x50
+ .text.main     0x400d0020        0x50 esp-idf/main/libmain.a(main.c.obj)
+
+.debug_info     0x00000000      0x1000
+ .debug_info    0x00000000      0x1000 somefile.o
+
+Cross Reference Table
+
+Symbol                           File
+a_symbol                         esp-idf/main/libmain.a(a.c.obj)

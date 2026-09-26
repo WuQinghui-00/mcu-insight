@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcu-insight"
+version = "0.1.0"
+description = "Static and runtime resource analysis for embedded firmware (ESP-IDF / FreeRTOS)"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+
+[project.scripts]
+mcu-insight = "mcu_insight.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mcu_insight*"]
