@@ -121,3 +121,38 @@ python -m mcu_insight.cli simulate --scenario heap-leak --count 20 | python -m m
 ```
 
 Scenarios: `steady`, `heap-leak`, `stack-creep`, `latency-jitter`.
+## Device agent
+
+`firmware/esp-idf/mcu_telemetry` is a reusable ESP-IDF component that prints one
+telemetry frame per report period. `tools/sync_firmware.py` vendors it into an
+ESP-IDF project:
+
+```powershell
+python tools/sync_firmware.py ..\ESP32-Light-Sensor-Monitor-github
+```
+
+The application then starts it and hands over the task handles:
+
+```c
+mcu_telemetry_config_t telemetry = { .device = "my-board" };
+mcu_telemetry_start(&telemetry);
+mcu_telemetry_register_task("sensor", sensor_handle, 4096);
+mcu_telemetry_set_custom_int("loop_period_ms", 200);
+```
+
+An overridable weak hook adds project specific JSON members (WiFi RSSI, model
+latency, and so on).
+
+### Measured cost
+
+| Project | Flash | Static DRAM |
+|---|---|---|
+| ESP32 light sensor | +2,528 B | +3,144 B |
+| ESP32 signal processing | +4,400 B | +3,520 B |
+
+Plus 4 KiB of heap for the telemetry task stack at run time. The frame buffer is
+static on purpose: the agent must not consume the stack head-room it exists to
+measure.
+
+The agent compiles and links in both projects but has not been run on hardware
+yet; the first board session still has to confirm the frame format on the wire.
