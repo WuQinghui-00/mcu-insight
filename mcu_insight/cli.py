@@ -10,8 +10,9 @@ from pathlib import Path
 from . import __version__
 from . import compare as compare_mod
 from .analysis import build_report
-from . import report as report_mod
+from .model_report import model_to_dict, render_model
 from .report import render
+from .tflite import load_model
 
 
 def parse_size(text: str) -> int:
@@ -25,21 +26,10 @@ def parse_size(text: str) -> int:
     return int(cleaned, 0) * multiplier
 
 
-def _add_artefact_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("map", help="path to the .map file produced by the linker")
-    parser.add_argument("--bin", dest="binary", help="path to the .bin file, for cross-checking")
-    parser.add_argument(
-        "--partition",
-        help="app partition size, e.g. 1500K or 0x177000 (default: 1500K)",
-    )
-    parser.add_argument("--top", type=int, default=10, help="how many components to list")
-    parser.add_argument("--json", action="store_true", help="emit machine-readable JSON")
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcu-insight",
-        description="Static resource analysis for embedded firmware builds.",
+        description="Static resource analysis for embedded firmware and TinyML models.",
     )
     parser.add_argument("--version", action="version", version=f"mcu-insight {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -48,7 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
         "analyze",
         help="Summarise the flash / RAM footprint of one linked firmware image.",
     )
-    _add_artefact_arguments(analyze)
+    analyze.add_argument("map", help="path to the .map file produced by the linker")
+    analyze.add_argument("--bin", dest="binary", help="path to the .bin file, for cross-checking")
+    analyze.add_argument(
+        "--partition",
+        help="app partition size, e.g. 1500K or 0x177000 (default: 1500K)",
+    )
+    analyze.add_argument("--top", type=int, default=10, help="how many components to list")
+    analyze.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
     compare = sub.add_parser(
         "compare",
@@ -70,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     compare.add_argument("--top", type=int, default=12, help="how many entries to list")
     compare.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    model = sub.add_parser(
+        "model",
+        help="Analyse a TensorFlow Lite model: arena, weights, operators, quantisation.",
+    )
+    model.add_argument("tflite", help="path to the .tflite model")
+    model.add_argument("--top", type=int, default=12, help="how many tensors to list")
+    model.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     return parser
 
 
@@ -151,8 +156,23 @@ def cmd_compare(args: argparse.Namespace) -> int:
     else:
         print(compare_mod.render(comparison, top=args.top))
 
-    if comparison.overflow:
-        return 1
+    return 1 if comparison.overflow else 0
+
+
+def cmd_model(args: argparse.Namespace) -> int:
+    path = Path(args.tflite)
+    if not _check_file(path, "model file"):
+        return 2
+    try:
+        report = load_model(path)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(model_to_dict(report), indent=2))
+    else:
+        print(render_model(report, top=args.top))
     return 0
 
 
@@ -163,6 +183,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_analyze(args)
     if args.command == "compare":
         return cmd_compare(args)
+    if args.command == "model":
+        return cmd_model(args)
     parser.error(f"unknown command: {args.command}")
     return 2
 
