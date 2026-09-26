@@ -10,8 +10,12 @@ from pathlib import Path
 from . import __version__
 from . import compare as compare_mod
 from .analysis import build_report
+from .collector import collect
 from .model_report import model_to_dict, render_model
 from .report import render
+from .simulator import SCENARIOS, iter_frames
+from .store import Store
+from .telemetry_report import render_summary
 from .tflite import load_model
 
 
@@ -29,7 +33,7 @@ def parse_size(text: str) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mcu-insight",
-        description="Static resource analysis for embedded firmware and TinyML models.",
+        description="Static and runtime resource analysis for embedded firmware.",
     )
     parser.add_argument("--version", action="version", version=f"mcu-insight {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -75,6 +79,39 @@ def build_parser() -> argparse.ArgumentParser:
     model.add_argument("tflite", help="path to the .tflite model")
     model.add_argument("--top", type=int, default=12, help="how many tensors to list")
     model.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+
+    collect_parser = sub.add_parser(
+        "collect",
+        help="Read telemetry frames from a device stream and store them.",
+    )
+    collect_parser.add_argument("--db", required=True, help="path to the SQLite database")
+    collect_parser.add_argument(
+        "--source",
+        default="stdin",
+        help="stdin (default), file:PATH, or serial:PORT[@BAUD]",
+    )
+    collect_parser.add_argument("--limit", type=int, help="stop after this many frames")
+    collect_parser.add_argument("--quiet", action="store_true", help="do not print a summary")
+    collect_parser.add_argument("--verbose", action="store_true", help="print every frame")
+
+    summary = sub.add_parser(
+        "summary",
+        help="Show stored telemetry: devices, frame counts and metric trends.",
+    )
+    summary.add_argument("--db", required=True, help="path to the SQLite database")
+    summary.add_argument("--device", help="device to summarise (default: the busiest)")
+    summary.add_argument("--top", type=int, default=12, help="how many metrics to list")
+
+    simulate = sub.add_parser(
+        "simulate",
+        help="Emit synthetic telemetry frames, for developing the host side without hardware.",
+    )
+    simulate.add_argument("--scenario", default="steady", choices=SCENARIOS)
+    simulate.add_argument("--count", type=int, default=10, help="how many frames to emit")
+    simulate.add_argument("--interval-ms", type=float, default=1000.0, help="simulated period")
+    simulate.add_argument("--device", default="esp32-light-monitor")
+    simulate.add_argument("--firmware", default="sim0001")
+    simulate.add_argument("--seed", type=int, default=1)
     return parser
 
 
@@ -88,12 +125,7 @@ def _report_to_dict(report, partition_size):
             "partition_bytes": partition_size,
         },
         "sections": [
-            {
-                "name": section.name,
-                "address": section.address,
-                "size": section.size,
-                "stored_in_flash": True,
-            }
+            {"name": section.name, "address": section.address, "size": section.size}
             for section in report.stored_sections
         ],
         "ram": {
@@ -122,7 +154,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
     partition_size = parse_size(args.partition) if args.partition else 1500 * 1024
     report = build_report(map_path, binary)
-
     if args.json:
         print(json.dumps(_report_to_dict(report, partition_size), indent=2))
     else:
@@ -138,10 +169,6 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return 2
     before_bin = Path(args.before_bin) if args.before_bin else None
     after_bin = Path(args.after_bin) if args.after_bin else None
-    if before_bin is not None and not _check_file(before_bin, "baseline binary"):
-        return 2
-    if after_bin is not None and not _check_file(after_bin, "new binary"):
-        return 2
 
     partition_size = parse_size(args.partition) if args.partition else 1500 * 1024
     comparison = compare_mod.compare_reports(
@@ -150,12 +177,10 @@ def cmd_compare(args: argparse.Namespace) -> int:
         partition_size=partition_size,
         min_change=args.min_change,
     )
-
     if args.json:
         print(json.dumps(compare_mod.to_dict(comparison), indent=2))
     else:
         print(compare_mod.render(comparison, top=args.top))
-
     return 1 if comparison.overflow else 0
 
 
@@ -168,7 +193,6 @@ def cmd_model(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-
     if args.json:
         print(json.dumps(model_to_dict(report), indent=2))
     else:
@@ -176,17 +200,56 @@ def cmd_model(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_collect(args: argparse.Namespace) -> int:
+    with Store(args.db) as store:
+        try:
+            stats = collect(args.source, store, limit=args.limit, verbose=args.verbose)
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if not args.quiet:
+            print(stats)
+    return 0
+
+
+def cmd_summary(args: argparse.Namespace) -> int:
+    db = Path(args.db)
+    if not db.is_file():
+        print(f"error: database not found: {db}", file=sys.stderr)
+        return 2
+    with Store(db) as store:
+        print(render_summary(store, device=args.device, top=args.top))
+    return 0
+
+
+def cmd_simulate(args: argparse.Namespace) -> int:
+    for line in iter_frames(
+        scenario=args.scenario,
+        count=args.count,
+        interval_ms=args.interval_ms,
+        device=args.device,
+        firmware=args.firmware,
+        seed=args.seed,
+    ):
+        print(line)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command == "analyze":
-        return cmd_analyze(args)
-    if args.command == "compare":
-        return cmd_compare(args)
-    if args.command == "model":
-        return cmd_model(args)
-    parser.error(f"unknown command: {args.command}")
-    return 2
+    handler = {
+        "analyze": cmd_analyze,
+        "compare": cmd_compare,
+        "model": cmd_model,
+        "collect": cmd_collect,
+        "summary": cmd_summary,
+        "simulate": cmd_simulate,
+    }.get(args.command)
+    if handler is None:
+        parser.error(f"unknown command: {args.command}")
+        return 2
+    return handler(args)
 
 
 if __name__ == "__main__":
