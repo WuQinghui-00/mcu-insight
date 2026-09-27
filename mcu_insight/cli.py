@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from . import checks as checks_mod
 from . import compare as compare_mod
 from .analysis import build_report
 from .collector import collect
@@ -44,10 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     analyze.add_argument("map", help="path to the .map file produced by the linker")
     analyze.add_argument("--bin", dest="binary", help="path to the .bin file, for cross-checking")
-    analyze.add_argument(
-        "--partition",
-        help="app partition size, e.g. 1500K or 0x177000 (default: 1500K)",
-    )
+    analyze.add_argument("--partition", help="app partition size, e.g. 1500K or 0x177000")
     analyze.add_argument("--top", type=int, default=10, help="how many components to list")
     analyze.add_argument("--json", action="store_true", help="emit machine-readable JSON")
 
@@ -59,26 +57,18 @@ def build_parser() -> argparse.ArgumentParser:
     compare.add_argument("after", help="new .map file")
     compare.add_argument("--before-bin", help="baseline .bin file, for exact image sizes")
     compare.add_argument("--after-bin", help="new .bin file, for exact image sizes")
-    compare.add_argument(
-        "--partition",
-        help="app partition size, e.g. 1500K or 0x177000 (default: 1500K)",
-    )
-    compare.add_argument(
-        "--min-change",
-        type=int,
-        default=0,
-        help="only report entries whose size changed by more than this many bytes",
-    )
-    compare.add_argument("--top", type=int, default=12, help="how many entries to list")
-    compare.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    compare.add_argument("--partition", help="app partition size, e.g. 1500K")
+    compare.add_argument("--min-change", type=int, default=0)
+    compare.add_argument("--top", type=int, default=12)
+    compare.add_argument("--json", action="store_true")
 
     model = sub.add_parser(
         "model",
         help="Analyse a TensorFlow Lite model: arena, weights, operators, quantisation.",
     )
     model.add_argument("tflite", help="path to the .tflite model")
-    model.add_argument("--top", type=int, default=12, help="how many tensors to list")
-    model.add_argument("--json", action="store_true", help="emit machine-readable JSON")
+    model.add_argument("--top", type=int, default=12)
+    model.add_argument("--json", action="store_true")
 
     collect_parser = sub.add_parser(
         "collect",
@@ -91,27 +81,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="stdin (default), file:PATH, or serial:PORT[@BAUD]",
     )
     collect_parser.add_argument("--limit", type=int, help="stop after this many frames")
-    collect_parser.add_argument("--quiet", action="store_true", help="do not print a summary")
-    collect_parser.add_argument("--verbose", action="store_true", help="print every frame")
+    collect_parser.add_argument("--quiet", action="store_true")
+    collect_parser.add_argument("--verbose", action="store_true")
 
     summary = sub.add_parser(
         "summary",
         help="Show stored telemetry: devices, frame counts and metric trends.",
     )
-    summary.add_argument("--db", required=True, help="path to the SQLite database")
-    summary.add_argument("--device", help="device to summarise (default: the busiest)")
-    summary.add_argument("--top", type=int, default=12, help="how many metrics to list")
+    summary.add_argument("--db", required=True)
+    summary.add_argument("--device")
+    summary.add_argument("--top", type=int, default=12)
 
     simulate = sub.add_parser(
         "simulate",
         help="Emit synthetic telemetry frames, for developing the host side without hardware.",
     )
     simulate.add_argument("--scenario", default="steady", choices=SCENARIOS)
-    simulate.add_argument("--count", type=int, default=10, help="how many frames to emit")
-    simulate.add_argument("--interval-ms", type=float, default=1000.0, help="simulated period")
+    simulate.add_argument("--count", type=int, default=10)
+    simulate.add_argument("--interval-ms", type=float, default=1000.0)
     simulate.add_argument("--device", default="esp32-light-monitor")
     simulate.add_argument("--firmware", default="sim0001")
     simulate.add_argument("--seed", type=int, default=1)
+
+    check = sub.add_parser(
+        "check",
+        help="Assert resource budgets and compare against a stored baseline.",
+    )
+    check.add_argument("--db", required=True, help="path to the SQLite database")
+    check.add_argument("--config", help="JSON file with threshold rules")
+    check.add_argument("--baseline", help="baseline JSON (defaults to the one in the config)")
+    check.add_argument("--save-baseline", help="store the current values as a baseline")
+    check.add_argument("--top", type=int, default=12)
+    check.add_argument("--json", action="store_true")
     return parser
 
 
@@ -151,7 +152,6 @@ def cmd_analyze(args: argparse.Namespace) -> int:
     binary = Path(args.binary) if args.binary else None
     if binary is not None and not _check_file(binary, "binary"):
         return 2
-
     partition_size = parse_size(args.partition) if args.partition else 1500 * 1024
     report = build_report(map_path, binary)
     if args.json:
@@ -169,7 +169,6 @@ def cmd_compare(args: argparse.Namespace) -> int:
         return 2
     before_bin = Path(args.before_bin) if args.before_bin else None
     after_bin = Path(args.after_bin) if args.after_bin else None
-
     partition_size = parse_size(args.partition) if args.partition else 1500 * 1024
     comparison = compare_mod.compare_reports(
         build_report(before_map, before_bin),
@@ -235,6 +234,56 @@ def cmd_simulate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check(args: argparse.Namespace) -> int:
+    db = Path(args.db)
+    if not db.is_file():
+        print(f"error: database not found: {db}", file=sys.stderr)
+        return 2
+
+    with Store(db) as store:
+        if args.save_baseline:
+            snapshot = checks_mod.save_baseline(store, args.save_baseline)
+            print(
+                f"baseline saved: {args.save_baseline} "
+                f"({len(snapshot)} device(s))"
+            )
+            return 0
+
+        if not args.config:
+            print("error: --config is required unless --save-baseline is used", file=sys.stderr)
+            return 2
+        try:
+            config = checks_mod.load_config(args.config)
+        except checks_mod.ConfigError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+
+        baseline_path = Path(args.baseline) if args.baseline else None
+        if baseline_path is None:
+            configured = config.get("baseline", {}).get("path")
+            if configured:
+                candidate = Path(configured)
+                if not candidate.is_absolute():
+                    candidate = Path(args.config).parent / candidate
+                baseline_path = candidate
+
+        baseline = None
+        if baseline_path is not None:
+            try:
+                baseline = checks_mod.load_baseline(baseline_path)
+            except checks_mod.ConfigError as exc:
+                print(f"warning: {exc}", file=sys.stderr)
+                baseline_path = None
+
+        report = checks_mod.check_store(store, config, baseline, baseline_path)
+
+    if args.json:
+        print(json.dumps(checks_mod.to_dict(report), indent=2))
+    else:
+        print(checks_mod.render(report, top=args.top))
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -245,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         "collect": cmd_collect,
         "summary": cmd_summary,
         "simulate": cmd_simulate,
+        "check": cmd_check,
     }.get(args.command)
     if handler is None:
         parser.error(f"unknown command: {args.command}")

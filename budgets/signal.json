@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {"metric": "heap.min", "min": 100000, "stat": "min"},
+    {"metric": "task.main.stack_free_min", "min": 384, "stat": "min"},
+    {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},
+    {"metric": "custom.infer_p99_us", "max": 5000, "stat": "max"},
+    {"metric": "custom.model_accuracy_pct", "min": 85}
+  ],
+  "baseline": {
+    "path": "signal_baseline.json",
+    "max_change_pct": 20
+  }
+}
