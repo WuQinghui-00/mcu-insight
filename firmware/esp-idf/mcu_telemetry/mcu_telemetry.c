@@ -31,6 +31,9 @@
 #define MCU_TELEMETRY_DEFAULT_STACK 4096
 #define MCU_TELEMETRY_TX_BUFFER 2048
 #define MCU_TELEMETRY_RX_BUFFER 256
+#define MCU_TELEMETRY_MAX_HISTOGRAMS 2
+#define MCU_TELEMETRY_HIST_BUCKETS 128
+#define MCU_TELEMETRY_HIST_WIDTH_US 250
 
 typedef struct {
     char name[16];
@@ -38,11 +41,22 @@ typedef struct {
 } registered_task_t;
 
 typedef struct {
+    char prefix[12];
+    uint16_t buckets[MCU_TELEMETRY_HIST_BUCKETS];
+    uint32_t samples;
+    int64_t sum;
+    int32_t min;
+    int32_t max;
+    bool used;
+} histogram_t;
+
+typedef struct {
     char key[24];
     int32_t value;
     bool used;
 } custom_entry_t;
 
+static histogram_t s_histograms[MCU_TELEMETRY_MAX_HISTOGRAMS];
 static registered_task_t s_registered[MCU_TELEMETRY_MAX_TASKS];
 static size_t s_registered_count;
 static custom_entry_t s_custom[MCU_TELEMETRY_MAX_CUSTOM];
@@ -248,6 +262,98 @@ static void append_custom(size_t *used)
     json_append(used, "}");
 }
 
+/* ------------------------------------------------------------------ */
+/* latency histograms                                                 */
+/* ------------------------------------------------------------------ */
+
+void mcu_telemetry_histogram_add(const char *prefix, int32_t value_us)
+{
+    if (prefix == NULL || prefix[0] == '\0' || value_us < 0) {
+        return;
+    }
+    histogram_t *target = NULL;
+    for (size_t i = 0; i < MCU_TELEMETRY_MAX_HISTOGRAMS; ++i) {
+        if (s_histograms[i].used && strcasecmp(s_histograms[i].prefix, prefix) == 0) {
+            target = &s_histograms[i];
+            break;
+        }
+    }
+    if (target == NULL) {
+        for (size_t i = 0; i < MCU_TELEMETRY_MAX_HISTOGRAMS; ++i) {
+            if (!s_histograms[i].used) {
+                target = &s_histograms[i];
+                copy_sanitised(target->prefix, sizeof(target->prefix), prefix);
+                target->min = INT32_MAX;
+                target->used = true;
+                break;
+            }
+        }
+    }
+    if (target == NULL) {
+        return;
+    }
+
+    size_t bucket = (size_t)(value_us / MCU_TELEMETRY_HIST_WIDTH_US);
+    if (bucket >= MCU_TELEMETRY_HIST_BUCKETS) {
+        bucket = MCU_TELEMETRY_HIST_BUCKETS - 1;
+    }
+    if (target->buckets[bucket] < UINT16_MAX) {
+        target->buckets[bucket]++;
+    }
+    target->samples++;
+    target->sum += value_us;
+    if (value_us < target->min) {
+        target->min = value_us;
+    }
+    if (value_us > target->max) {
+        target->max = value_us;
+    }
+}
+
+static int32_t histogram_percentile(const histogram_t *histogram, int percent)
+{
+    if (histogram->samples == 0) {
+        return 0;
+    }
+    uint32_t target = (uint32_t)(((uint64_t)histogram->samples * (uint32_t)percent) / 100u);
+    if (target == 0) {
+        target = 1;
+    }
+    uint32_t seen = 0;
+    for (size_t i = 0; i < MCU_TELEMETRY_HIST_BUCKETS; ++i) {
+        seen += histogram->buckets[i];
+        if (seen >= target) {
+            /* Lower edge of the bucket, i.e. a conservative estimate. */
+            return (int32_t)(i * MCU_TELEMETRY_HIST_WIDTH_US);
+        }
+    }
+    return histogram->max;
+}
+
+static void publish_histograms(void)
+{
+    for (size_t i = 0; i < MCU_TELEMETRY_MAX_HISTOGRAMS; ++i) {
+        histogram_t *histogram = &s_histograms[i];
+        if (!histogram->used || histogram->samples == 0) {
+            continue;
+        }
+        char key[32];
+        snprintf(key, sizeof(key), "%s_min_us", histogram->prefix);
+        mcu_telemetry_set_custom_int(key, histogram->min);
+        snprintf(key, sizeof(key), "%s_max_us", histogram->prefix);
+        mcu_telemetry_set_custom_int(key, histogram->max);
+        snprintf(key, sizeof(key), "%s_mean_us", histogram->prefix);
+        mcu_telemetry_set_custom_int(
+            key, (int32_t)(histogram->sum / (int64_t)histogram->samples));
+        snprintf(key, sizeof(key), "%s_p50_us", histogram->prefix);
+        mcu_telemetry_set_custom_int(key, histogram_percentile(histogram, 50));
+        snprintf(key, sizeof(key), "%s_p99_us", histogram->prefix);
+        mcu_telemetry_set_custom_int(key, histogram_percentile(histogram, 99));
+        snprintf(key, sizeof(key), "%s_samples", histogram->prefix);
+        mcu_telemetry_set_custom_int(key, (int32_t)histogram->samples);
+    }
+}
+
 static void report(void)
 {
     size_t used = 0;
@@ -263,6 +369,7 @@ static void report(void)
                 (unsigned)esp_get_free_heap_size(),
                 (unsigned)esp_get_minimum_free_heap_size(),
                 (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+    publish_histograms();
     append_tasks(&used);
     append_custom(&used);
 
