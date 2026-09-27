@@ -277,3 +277,35 @@ A caution from the same session: adding 26 KB of diagnostic code (the harmonic
 dump and a floating-point feature dump) moved the measured P50 from 7.5 ms to
 18.8 ms on an identical model. Latency is layout sensitive on this chip, so only
 compare builds that differ in the thing under test.
+## Fault injection matrix
+
+`tools/fault_matrix.py` injects one fault at a time through the firmware switch
+(built with `ENABLE_FAULT_INJECTION = 1`), records telemetry and asserts that
+the budget checks notice:
+
+| injection | what changes | detected |
+|---|---|---|
+| baseline (`FAULT off`) | nothing | no violation (correct) |
+| `FAULT heap` | leaks 2 KB per loop: heap.min 144,560 -> 50,176 | yes |
+| `FAULT stack` | 1800 byte frame in a 2048 byte task: stack free 1536 -> 32 | yes |
+| `FAULT busy` | high priority busy loop: idle0 90% -> 0% | yes |
+
+The runner exists because a naive script gets three things wrong, each of which
+cost a measurement cycle to find:
+
+* **the first console command after a reset is eaten by the bootloader**, so a
+  throwaway command is sent first;
+* **a leak is cumulative**, so every case starts from a fresh boot;
+* **a running average restarted by that boot is noise**, which the rules handle
+  with `min_samples`.
+
+Two of the injected faults were initially invisible because the compiler
+deleted them: an unused `malloc` was elided, and a `memset` through a `void *`
+cast dropped the `volatile` qualifier so the whole stack frame vanished. A
+fault that the optimiser removes proves nothing.
+
+One more lesson the matrix encoded: the **stack high-water mark is a historical
+worst case**, so a regression on a shallow path is invisible if start-up already
+went deeper. The stack fault therefore runs in a task whose deepest point is
+the fault itself, which is also how a real handler with a large scratch buffer
+behaves.

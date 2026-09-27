@@ -44,6 +44,10 @@ class Rule:
     #: Resource budgets want "min" (the stack never dropped below X), latency
     #: ceilings want "max", running averages want "last".
     stat: str = "last"
+    #: Skip the rule until the metric has at least this many samples: a running
+    #: average restarted by a reboot is noise for the first minutes.
+    min_samples: int = 0
+    #: Skip the rule until the metric has at least this many samples. A
 
     def matches(self, metric: str) -> bool:
         return fnmatch.fnmatchcase(metric, self.pattern)
@@ -108,6 +112,7 @@ class CheckReport:
     devices: list[str] = field(default_factory=list)
     rules: list[Rule] = field(default_factory=list)
     checked_metrics: int = 0
+    skipped_metrics: list[str] = field(default_factory=list)
     violations: list[Violation] = field(default_factory=list)
     changes: list[Change] = field(default_factory=list)
     baseline_path: Path | None = None
@@ -152,6 +157,7 @@ def parse_rules(config: dict) -> list[Rule]:
                 minimum=None if minimum is None else float(minimum),
                 maximum=None if maximum is None else float(maximum),
                 stat=stat,
+                min_samples=int(entry.get("min_samples", 0)),
             )
         )
     return rules
@@ -192,6 +198,9 @@ def check_store(
         for name, entry in stats.items():
             for rule in rules:
                 if not rule.matches(name):
+                    continue
+                if entry.count < rule.min_samples:
+                    report.skipped_metrics.append(f"{device}:{name}")
                     continue
                 seen.add(f"{device}:{name}")
                 value = rule.value_from(entry)
@@ -257,6 +266,12 @@ def render(report: CheckReport, top: int = 12) -> str:
                 f"{change.current:>10,.0f}   {amount}"
             )
 
+    if report.skipped_metrics:
+        lines.append("")
+        lines.append(
+            f"{len(report.skipped_metrics)} metric(s) skipped (below min_samples)"
+        )
+
     if report.new_metrics:
         lines.append("")
         lines.append(f"{len(report.new_metrics)} metric(s) not present in the baseline")
@@ -271,6 +286,7 @@ def to_dict(report: CheckReport) -> dict:
         "database": str(report.db),
         "devices": report.devices,
         "checked_metrics": report.checked_metrics,
+        "skipped_metrics": report.skipped_metrics,
         "ok": report.ok,
         "violations": [
             {
