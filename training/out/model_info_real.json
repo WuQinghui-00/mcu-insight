@@ -1,0 +1,19 @@
+{
+  "captured_samples": 735,
+  "class_counts": {
+    "sine": 250,
+    "square": 244,
+    "triangle": 241
+  },
+  "train": 552,
+  "test": 183,
+  "before_accuracy": 0.9508196721311475,
+  "after_accuracy": 0.994535519125683,
+  "float_accuracy": 0.994535505771637,
+  "per_class": {
+    "sine": 0.9838709677419355,
+    "square": 1.0,
+    "triangle": 1.0
+  },
+  "tflite_bytes": 6544
+}
