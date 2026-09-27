@@ -10,6 +10,11 @@
 #include "esp_system.h"
 #include "esp_timer.h"
 
+#if CONFIG_ESP_CONSOLE_UART
+#include "driver/uart.h"
+#include "esp_vfs_dev.h"
+#endif
+
 #ifndef MCU_TELEMETRY_BUFFER_SIZE
 /* The frame buffer is static rather than on the task stack: the whole point of
  * this agent is to watch stack head-room, so it must not consume it. */
@@ -18,6 +23,8 @@
 
 #define MCU_TELEMETRY_DEFAULT_PERIOD_MS 5000
 #define MCU_TELEMETRY_DEFAULT_STACK 4096
+#define MCU_TELEMETRY_TX_BUFFER 2048
+#define MCU_TELEMETRY_RX_BUFFER 256
 
 typedef struct {
     char name[16];
@@ -40,6 +47,8 @@ static size_t s_link_selftest_bytes;
 static TaskHandle_t s_task;
 static uint32_t s_seq;
 static char s_buffer[MCU_TELEMETRY_BUFFER_SIZE];
+static bool s_uart_ready;
+static uint32_t s_uart_retries;
 
 /* ------------------------------------------------------------------ */
 /* weak hook                                                          */
@@ -88,6 +97,45 @@ static void json_append(size_t *used, const char *format, ...)
     *used += (size_t)written;
     if (*used >= sizeof(s_buffer)) {
         *used = sizeof(s_buffer) - 1;
+    }
+}
+
+/*
+ * Write a whole buffer to the console.
+ *
+ * Without a driver the console writes one byte at a time straight into the
+ * UART FIFO, competing with every other writer, and a frame longer than a few
+ * hundred bytes loses bytes. With the driver installed the whole frame goes
+ * into the TX ring buffer and the interrupt handler feeds the FIFO, which is
+ * both faster and safe.
+ */
+static void write_all(const char *data, size_t size)
+{
+#if CONFIG_ESP_CONSOLE_UART
+    if (s_uart_ready) {
+        size_t sent = 0;
+        while (sent < size) {
+            int written = uart_write_bytes(CONFIG_ESP_CONSOLE_UART_NUM, data + sent, size - sent);
+            if (written > 0) {
+                sent += (size_t)written;
+            } else {
+                /* Ring buffer full: let it drain, then continue with the
+                 * remainder. The console VFS discards the count instead. */
+                s_uart_retries++;
+                uart_wait_tx_done(CONFIG_ESP_CONSOLE_UART_NUM, pdMS_TO_TICKS(100));
+            }
+        }
+        mcu_telemetry_set_custom_int("uart_tx_retries", (int32_t)s_uart_retries);
+        return;
+    }
+#endif
+    size_t sent = 0;
+    while (sent < size) {
+        ssize_t written = write(STDOUT_FILENO, data + sent, size - sent);
+        if (written <= 0) {
+            break;
+        }
+        sent += (size_t)written;
     }
 }
 
@@ -159,8 +207,7 @@ static void append_tasks(size_t *used)
     for (UBaseType_t i = 0; i < count; ++i) {
         emit_task(used, &first, statuses[i].pcTaskName);
     }
-    /* Registered tasks the snapshot did not cover (for example when the
-     * snapshot array is smaller than the task count). */
+    /* Registered tasks the snapshot did not cover. */
     for (size_t i = 0; i < s_registered_count; ++i) {
         if (snapshot_has(statuses, count, s_registered[i].name)) {
             continue;
@@ -218,11 +265,11 @@ static void report(void)
     if (extra[0] != '\0') {
         json_append(&used, ",%s", extra);
     }
+
     /*
      * Additive checksum over the bytes sent so far, so the host can tell a
-     * damaged frame from a valid one: serial links do lose the occasional byte
-     * when a burst overlaps heavy CPU load, and a silently corrupted frame is
-     * worse than a dropped one.
+     * damaged frame from a valid one: a silently corrupted frame is worse than
+     * a dropped one.
      */
     unsigned checksum = 0;
     for (size_t i = 0; i < used; ++i) {
@@ -230,23 +277,7 @@ static void report(void)
     }
     json_append(&used, ",\"sum\":%u}\n", checksum % 256u);
 
-    /*
-     * Write the frame with one syscall instead of fputs(): stdio buffering
-     * splits a long frame into several writes, and a log line from another task
-     * then lands in the middle of it.
-     *
-     * The return value matters. A VFS write can be short when the UART TX
-     * buffer is full (which happens while another task hogs the CPU), and
-     * ignoring the count silently drops bytes in the middle of a frame.
-     */
-    size_t sent = 0;
-    while (sent < used) {
-        ssize_t written = write(STDOUT_FILENO, s_buffer + sent, used - sent);
-        if (written <= 0) {
-            break;
-        }
-        sent += (size_t)written;
-    }
+    write_all(s_buffer, used);
 }
 
 static void telemetry_task(void *argument)
@@ -278,6 +309,24 @@ esp_err_t mcu_telemetry_start(const mcu_telemetry_config_t *config)
     if (s_task != NULL) {
         return ESP_ERR_INVALID_STATE;
     }
+
+#if CONFIG_ESP_CONSOLE_UART
+    /*
+     * Give the console port a real TX ring buffer. Without it the console
+     * writes byte by byte straight into the FIFO and long frames lose bytes.
+     * If the install fails the agent falls back to the VFS path.
+     */
+    if (uart_driver_install(CONFIG_ESP_CONSOLE_UART_NUM, MCU_TELEMETRY_RX_BUFFER,
+                            MCU_TELEMETRY_TX_BUFFER, 0, NULL, 0) == ESP_OK) {
+        /*
+         * Route stdio through the same driver. Logging that keeps using the
+         * ROM path writes into the FIFO byte by byte and races the driver for
+         * space; sharing one TX path removes the race entirely.
+         */
+        esp_vfs_dev_uart_use_driver(CONFIG_ESP_CONSOLE_UART_NUM);
+        s_uart_ready = true;
+    }
+#endif
 
     copy_sanitised(s_device, sizeof(s_device), config->device);
     copy_sanitised(s_firmware, sizeof(s_firmware), config->firmware ? config->firmware : "");
@@ -369,14 +418,7 @@ void mcu_telemetry_link_selftest(size_t bytes)
     }
     payload[used++] = '\n';
 
-    size_t sent = 0;
-    while (sent < used) {
-        ssize_t written = write(STDOUT_FILENO, payload + sent, used - sent);
-        if (written <= 0) {
-            break;
-        }
-        sent += (size_t)written;
-    }
+    write_all(payload, used);
 }
 
 void mcu_telemetry_report_now(void)

@@ -216,3 +216,36 @@ outstanding.
 The script synthesises waveforms, applies the same DSP the firmware uses
 (integer mean removal, Hann window, 128-point FFT, magnitude), normalises the
 spectrum and trains a small MLP. 64 features -> 32 -> 16 -> 3 classes.
+## The console UART is not driver-backed by default
+
+Symptom: telemetry frames arrived with one or two bytes missing roughly half
+the time, while ESP_LOG lines were never damaged. The device-side checksum
+proved the bytes left the chip intact, so they were being lost on the way out.
+
+Cause, found by reading `esp_vfs_console` and `uart_vfs.c`:
+
+* ESP-IDF's default console installs **no UART driver**. Console writes go
+  through a ROM path one byte at a time (`uart_tx_char` busy-waits for FIFO
+  space); `uart_write_bytes()` simply fails with `uart driver error` until a
+  driver exists.
+* A frame of several hundred bytes therefore races every other console writer
+  for FIFO slots. Log lines are short, which is why they never suffered.
+
+Fix, entirely inside the component:
+
+1. install the UART driver for the console port and route stdio through it
+   (`uart_driver_install` + `esp_vfs_dev_uart_use_driver`), so every writer
+   shares one interrupt-driven TX path;
+2. write frames with `uart_write_bytes()` in a retry loop that respects the
+   returned count, instead of a VFS write that discards it.
+
+Measured on the signal-processing project with WiFi and MQTT connected:
+
+| | corrupted frames |
+|---|---|
+| before | 87% |
+| after | 0% (20 of 20 frames over 105 s) |
+
+Cost: about 12 KB of flash and 2 KB of TX ring-buffer RAM. The agent falls back
+to the VFS path if the driver cannot be installed, so it never regresses to
+silence.
