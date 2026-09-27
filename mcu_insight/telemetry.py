@@ -102,11 +102,36 @@ def looks_like_frame(line: str) -> bool:
     return stripped.startswith("{") and '"device"' in stripped and '"v"' in stripped
 
 
+CHECKSUM_MARKER = ',"sum":'
+
+
+def verify_checksum(text: str) -> bool:
+    """Check the additive checksum the device appends, when present.
+
+    The device sums every byte of the frame before the checksum field and
+    appends it modulo 256; a serial link that drops a byte then produces a
+    frame the host can reject instead of storing a corrupted metric.
+    """
+    index = text.rfind(CHECKSUM_MARKER)
+    if index < 0:
+        return True
+    end = text.find("}", index)
+    if end < 0:
+        return False
+    try:
+        declared = int(text[index + len(CHECKSUM_MARKER):end])
+    except ValueError:
+        return False
+    return sum(text[:index].encode("utf-8")) % 256 == declared
+
+
 def parse_frame(line: str) -> Frame:
     """Parse one JSON line into a :class:`Frame`."""
     text = line.strip()
     if not text.startswith("{"):
         raise TelemetryError("line is not a JSON object")
+    if not verify_checksum(text):
+        raise TelemetryError("checksum mismatch")
     try:
         data = json.loads(text)
     except json.JSONDecodeError as exc:

@@ -19,7 +19,7 @@
 #define MCU_TELEMETRY_SCHEMA_VERSION 1
 
 /* Capacity of the registered task table and the custom metric table. */
-#define MCU_TELEMETRY_MAX_TASKS 16
+#define MCU_TELEMETRY_MAX_TASKS 24
 #define MCU_TELEMETRY_MAX_CUSTOM 8
 
 typedef struct {
