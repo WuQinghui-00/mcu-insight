@@ -36,6 +36,7 @@ static custom_entry_t s_custom[MCU_TELEMETRY_MAX_CUSTOM];
 static char s_device[32];
 static char s_firmware[32];
 static uint32_t s_period_ms = MCU_TELEMETRY_DEFAULT_PERIOD_MS;
+static size_t s_link_selftest_bytes;
 static TaskHandle_t s_task;
 static uint32_t s_seq;
 static char s_buffer[MCU_TELEMETRY_BUFFER_SIZE];
@@ -256,6 +257,9 @@ static void telemetry_task(void *argument)
         period = 1;
     }
     for (;;) {
+        if (s_link_selftest_bytes != 0) {
+            mcu_telemetry_link_selftest(s_link_selftest_bytes);
+        }
         report();
         /* Returns early when mcu_telemetry_report_now() pokes the task. */
         ulTaskNotifyTake(pdTRUE, period);
@@ -279,6 +283,7 @@ esp_err_t mcu_telemetry_start(const mcu_telemetry_config_t *config)
     copy_sanitised(s_firmware, sizeof(s_firmware), config->firmware ? config->firmware : "");
     s_period_ms = config->report_period_ms ? config->report_period_ms
                                            : MCU_TELEMETRY_DEFAULT_PERIOD_MS;
+    s_link_selftest_bytes = config->link_selftest_bytes;
 
     uint32_t stack_size = config->stack_size ? config->stack_size
                                              : MCU_TELEMETRY_DEFAULT_STACK;
@@ -332,6 +337,45 @@ void mcu_telemetry_set_custom_int(const char *key, int32_t value)
             s_custom[i].used = true;
             return;
         }
+    }
+}
+
+/*
+ * Diagnostic: send a known printable pattern so the host can verify the link
+ * byte for byte. Format:
+ *     LINKTEST <bytes> <checksum>\n
+ *     <bytes of the repeating pattern>\n
+ */
+void mcu_telemetry_link_selftest(size_t bytes)
+{
+    static const char pattern[] =
+        "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const size_t period = sizeof(pattern) - 1;
+    static char payload[MCU_TELEMETRY_BUFFER_SIZE];
+
+    if (bytes > sizeof(payload) - 32) {
+        bytes = sizeof(payload) - 32;
+    }
+
+    unsigned checksum = 0;
+    for (size_t i = 0; i < bytes; ++i) {
+        checksum += (unsigned char)pattern[i % period];
+    }
+
+    size_t used = (size_t)snprintf(payload, sizeof(payload), "LINKTEST %u %u\n",
+                                   (unsigned)bytes, checksum % 256u);
+    for (size_t i = 0; i < bytes && used + 2 < sizeof(payload); ++i) {
+        payload[used++] = pattern[i % period];
+    }
+    payload[used++] = '\n';
+
+    size_t sent = 0;
+    while (sent < used) {
+        ssize_t written = write(STDOUT_FILENO, payload + sent, used - sent);
+        if (written <= 0) {
+            break;
+        }
+        sent += (size_t)written;
     }
 }
 

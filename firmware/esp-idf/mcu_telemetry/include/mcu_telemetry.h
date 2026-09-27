@@ -31,6 +31,9 @@ typedef struct {
     uint32_t report_period_ms;
     /* Stack for the telemetry task; 0 uses 4096 bytes. */
     uint32_t stack_size;
+    /* Diagnostic: when non-zero, the agent sends a known pattern of this many
+     * bytes from its own task before every report. Set to 0 to disable. */
+    size_t link_selftest_bytes;
     /* Task priority; 0 uses tskIDLE_PRIORITY + 1. */
     UBaseType_t priority;
 } mcu_telemetry_config_t;
@@ -61,6 +64,14 @@ esp_err_t mcu_telemetry_register_task(const char *name, uint32_t stack_size);
  * formatting code into the image, and scaled integers cover the same ground.
  */
 void mcu_telemetry_set_custom_int(const char *key, int32_t value);
+
+/*
+ * Diagnostic: send `bytes` of a known pattern, framed as
+ *     LINKTEST <bytes> <checksum>
+ *     <payload>
+ * so the host can verify the transport byte for byte.
+ */
+void mcu_telemetry_link_selftest(size_t bytes);
 
 /* Report immediately instead of waiting for the next period. */
 void mcu_telemetry_report_now(void);
