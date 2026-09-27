@@ -61,7 +61,7 @@ def render_model(report: ModelReport, top: int = 12) -> str:
         lines.append(f"Largest tensors (top {min(top, len(ranked))})")
         for tensor in ranked[:top]:
             shape = "x".join(str(d) for d in tensor.shape) or "scalar"
-            kind = "constant" if tensor.buffer_index != 0 else "runtime"
+            kind = "constant" if tensor.is_constant else "runtime"
             lines.append(
                 f"  {tensor.name:<20} {shape:>12}  {tensor.type_name:<8} "
                 f"{tensor.size_bytes:>7,} B  {kind}"

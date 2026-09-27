@@ -1,0 +1,21 @@
+{
+  "classes": [
+    "sine",
+    "square",
+    "triangle"
+  ],
+  "features": 64,
+  "float_accuracy": 0.9879999756813049,
+  "int8_accuracy": 0.986,
+  "tflite_bytes": 6544,
+  "input": {
+    "dtype": "<class 'numpy.int8'>",
+    "scale": 0.001919020782224834,
+    "zero_point": -128
+  },
+  "output": {
+    "dtype": "<class 'numpy.int8'>",
+    "scale": 0.00390625,
+    "zero_point": -128
+  }
+}

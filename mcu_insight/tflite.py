@@ -116,6 +116,7 @@ class Tensor:
     type_id: int
     buffer_index: int
     element_bits: int
+    buffer_bytes: int = 0
     scales: list[float] = field(default_factory=list)
     zero_points: list[int] = field(default_factory=list)
 
@@ -137,6 +138,15 @@ class Tensor:
     @property
     def is_quantized(self) -> bool:
         return bool(self.scales)
+
+    @property
+    def is_constant(self) -> bool:
+        """A tensor is constant only when its buffer actually holds data.
+
+        Converters give every tensor a buffer index; the activations point at
+        empty buffers, so the index alone says nothing.
+        """
+        return self.buffer_bytes > 0
 
 
 @dataclass
@@ -181,7 +191,7 @@ class ModelReport:
 
     @property
     def parameter_count(self) -> int:
-        return sum(t.element_count for t in self.tensors if t.buffer_index != 0)
+        return sum(t.element_count for t in self.tensors if t.is_constant)
 
 
 # ---------------------------------------------------------------------------
@@ -189,7 +199,7 @@ class ModelReport:
 # ---------------------------------------------------------------------------
 
 
-def _parse_tensor(table: Table, index: int, buffers: list[int]) -> Tensor:
+def _parse_tensor(table: Table, index: int, buffer_lengths: list[int]) -> Tensor:
     buffer_index = table.scalar(2, "u32", 0)
     quantization = table.table(4)
     scales: list[float] = []
@@ -197,14 +207,15 @@ def _parse_tensor(table: Table, index: int, buffers: list[int]) -> Tensor:
     if quantization is not None:
         scales = list(quantization.vector_scalars(2, "f32"))
         zero_points = list(quantization.vector_scalars(3, "i64"))
-    del buffers
     type_id = table.scalar(1, "i8", 0)
+    buffer_bytes = buffer_lengths[buffer_index] if buffer_index < len(buffer_lengths) else 0
     return Tensor(
         index=index,
         name=table.string(3) or f"tensor_{index}",
         shape=list(table.vector_scalars(0, "i32")),
         type_id=type_id,
         buffer_index=buffer_index,
+        buffer_bytes=buffer_bytes,
         element_bits=tensor_element_bits(type_id),
         scales=scales,
         zero_points=zero_points,
@@ -243,19 +254,19 @@ def arena_peak(tensors: list[Tensor], operators: list[Operator], outputs: list[i
     starts: dict[int, int] = {}
     ends: dict[int, int] = {}
     for tensor_index in _graph_inputs(operators, tensors):
-        if not _is_constant(tensors[tensor_index]):
+        if not tensors[tensor_index].is_constant:
             starts[tensor_index] = -1
 
     for operator in operators:
         for out in operator.outputs:
-            if 0 <= out < len(tensors) and not _is_constant(tensors[out]):
+            if 0 <= out < len(tensors) and not tensors[out].is_constant:
                 starts.setdefault(out, operator.index)
         for inp in operator.inputs:
-            if 0 <= inp < len(tensors) and not _is_constant(tensors[inp]):
+            if 0 <= inp < len(tensors) and not tensors[inp].is_constant:
                 ends[inp] = operator.index
 
     for tensor_index in outputs:
-        if 0 <= tensor_index < len(tensors) and not _is_constant(tensors[tensor_index]):
+        if 0 <= tensor_index < len(tensors) and not tensors[tensor_index].is_constant:
             ends[tensor_index] = len(operators)
 
     for index in starts:
@@ -269,10 +280,6 @@ def arena_peak(tensors: list[Tensor], operators: list[Operator], outputs: list[i
                 live += tensors[tensor_index].size_bytes
         peak = max(peak, live)
     return peak
-
-
-def _is_constant(tensor: Tensor) -> bool:
-    return tensor.buffer_index != 0
 
 
 def _graph_inputs(operators: list[Operator], tensors: list[Tensor]) -> list[int]:
@@ -294,9 +301,9 @@ def load_model(path: str | Path) -> ModelReport:
     subgraphs = root.vector_tables(2)
     buffers = root.vector_tables(4)
 
-    weights_bytes = 0
-    for buffer in buffers[1:]:
-        weights_bytes += len(buffer.vector_bytes(0))
+    buffer_lengths = [len(buffer.vector_bytes(0)) for buffer in buffers]
+    weights_bytes = sum(buffer_lengths[1:])
+# (weights are summed from buffer_lengths above)
 
     if not subgraphs:
         tensors: list[Tensor] = []
@@ -305,7 +312,10 @@ def load_model(path: str | Path) -> ModelReport:
         outputs: list[int] = []
     else:
         subgraph = subgraphs[0]
-        tensors = [_parse_tensor(t, i, buffers) for i, t in enumerate(subgraph.vector_tables(0))]
+        tensors = [
+            _parse_tensor(t, i, buffer_lengths)
+            for i, t in enumerate(subgraph.vector_tables(0))
+        ]
         operators = [_parse_operator(t, i, codes) for i, t in enumerate(subgraph.vector_tables(3))]
         inputs = list(subgraph.vector_scalars(1, "i32"))
         outputs = list(subgraph.vector_scalars(2, "i32"))
@@ -328,9 +338,10 @@ def load_model(path: str | Path) -> ModelReport:
         operators=operators,
         weights_bytes=weights_bytes,
         arena_peak=arena_peak(tensors, operators, outputs),
-        arena_upper_bound=sum(t.size_bytes for t in tensors if not _is_constant(t)),
+        arena_upper_bound=sum(t.size_bytes for t in tensors if not t.is_constant),
         quantization=quantization,
     )
     report.unknown_ops = sorted({op.code for op in report.operators if op.code not in BUILTIN_OPERATORS})
     report.custom_ops = sorted({op.custom_code or "<unnamed>" for op in report.operators if op.is_custom})
     return report
+

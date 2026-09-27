@@ -186,3 +186,33 @@ task.main.stack_free_min     2,076 ->   1,404   <- tightest non-idle task
 task.Monitor.stack_free_min  1,692 ->   1,596
 task.telemetry.stack_free_min 2,456 ->  2,152
 ```
+## Validation against a real converter output
+
+The offline fixture could not catch every class of mistake, so the parser was
+also run against a model produced by the real TensorFlow converter:
+`training/train_waveform_classifier.py` trains a 3-class waveform classifier,
+quantises it to int8 and writes `training/out/waveform_model.tflite`.
+
+| Check | Result |
+|---|---|
+| Operators | 3 x FULLY_CONNECTED + 1 x SOFTMAX, matching the Keras model |
+| Model size / weights | 6,544 B total, 2,924 B of weights, 2,659 parameters |
+| Tensor arena peak | 96 B, against a reuse-free upper bound of 118 B |
+
+That run immediately found a parser bug: it treated `buffer_index != 0` as
+"constant". Converters assign a buffer to *every* tensor and only the ones that
+carry weights have data in them, so every activation was misclassified and the
+arena came out as 0 B. A tensor is constant when its buffer actually holds data.
+
+This supersedes the earlier note that validation against a real model was still
+outstanding.
+
+## Training a model
+
+```powershell
+.venv\Scripts\python.exe training\train_waveform_classifier.py
+```
+
+The script synthesises waveforms, applies the same DSP the firmware uses
+(integer mean removal, Hann window, 128-point FFT, magnitude), normalises the
+spectrum and trains a small MLP. 64 features -> 32 -> 16 -> 3 classes.
