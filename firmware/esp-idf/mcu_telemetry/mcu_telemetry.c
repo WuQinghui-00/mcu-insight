@@ -3,12 +3,18 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
 #include <strings.h>
 #include <unistd.h>
 
 #include "esp_heap_caps.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+
+#if CONFIG_PM_ENABLE
+#include "esp_private/pm_impl.h"
+#endif
 
 #if CONFIG_ESP_CONSOLE_UART
 #include "driver/uart.h"
@@ -280,6 +286,83 @@ static void report(void)
     write_all(s_buffer, used);
 }
 
+#if CONFIG_PM_ENABLE
+/*
+ * Publish how much time the chip actually spends in light sleep.
+ *
+ * This answers "did a change break low power?" without a current meter: the
+ * 21 mA to 7 mA drop comes from entering light sleep at all, so if sleep
+ * residency stays healthy the power profile did not regress.
+ *
+ * esp_pm_impl_dump_stats() is an IDF internal API, but it is the only way to
+ * read those counters; the output is a small fixed table.
+ */
+static void sample_power_stats(void)
+{
+    static char buffer[512];
+    FILE *stream = fmemopen(buffer, sizeof(buffer) - 1, "w");
+    if (stream == NULL) {
+        return;
+    }
+    esp_pm_impl_dump_stats(stream);
+    long written = ftell(stream);
+    fclose(stream);
+    if (written < 0) {
+        return;
+    }
+    if ((size_t)written >= sizeof(buffer)) {
+        written = (long)(sizeof(buffer) - 1);
+    }
+    buffer[written] = '\0';
+
+    /* DIAGNOSTIC: dump the raw table once so the parser can be checked. */
+    static bool dumped;
+    if (!dumped) {
+        dumped = true;
+        const char *header = "---PMDUMP---\n";
+        write_all(header, strlen(header));
+        write_all(buffer, (size_t)written);
+    }
+
+    const char *row = strstr(buffer, "SLEEP");
+    if (row == NULL) {
+        return;                     /* light sleep is not enabled */
+    }
+    const char *end = strchr(row, '\n');
+    if (end == NULL) {
+        end = row + strlen(row);
+    }
+    /*
+     * The columns are space padded and the frequency reads "40 M", so parse
+     * from the end of the row: the last token is the percentage.
+     */
+    const char *p = end;
+    while (p > row && (p[-1] == ' ' || p[-1] == '%')) {
+        --p;
+    }
+    const char *percent_end = p;
+    while (p > row && isdigit((unsigned char)p[-1])) {
+        --p;
+    }
+    const char *percent_start = p;
+    while (p > row && p[-1] == ' ') {
+        --p;
+    }
+    const char *time_end = p;
+    while (p > row && isdigit((unsigned char)p[-1])) {
+        --p;
+    }
+    if (p == time_end) {
+        return;
+    }
+    unsigned long long micros = strtoull(p, NULL, 10);
+    int percent = (int)strtol(percent_start, NULL, 10);
+    (void)percent_end;
+    mcu_telemetry_set_custom_int("light_sleep_ms", (int32_t)(micros / 1000));
+    mcu_telemetry_set_custom_int("light_sleep_pct", percent);
+}
+#endif
+
 static void telemetry_task(void *argument)
 {
     (void)argument;
@@ -291,6 +374,9 @@ static void telemetry_task(void *argument)
         if (s_link_selftest_bytes != 0) {
             mcu_telemetry_link_selftest(s_link_selftest_bytes);
         }
+#if CONFIG_PM_ENABLE
+        sample_power_stats();
+#endif
         report();
         /* Returns early when mcu_telemetry_report_now() pokes the task. */
         ulTaskNotifyTake(pdTRUE, period);
