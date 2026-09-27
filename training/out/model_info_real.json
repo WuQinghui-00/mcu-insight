@@ -1,19 +1,19 @@
 {
-  "captured_samples": 735,
+  "captured_samples": 720,
   "class_counts": {
-    "sine": 250,
-    "square": 244,
-    "triangle": 241
+    "sine": 240,
+    "square": 240,
+    "triangle": 240
   },
-  "train": 552,
-  "test": 183,
-  "before_accuracy": 0.9508196721311475,
-  "after_accuracy": 0.994535519125683,
-  "float_accuracy": 0.994535505771637,
+  "train": 540,
+  "test": 180,
+  "before_accuracy": 0.8833333333333333,
+  "after_accuracy": 0.9833333333333333,
+  "float_accuracy": 0.9777777791023254,
   "per_class": {
-    "sine": 0.9838709677419355,
+    "sine": 0.9833333333333333,
     "square": 1.0,
-    "triangle": 1.0
+    "triangle": 0.9666666666666667
   },
   "tflite_bytes": 6544
 }
