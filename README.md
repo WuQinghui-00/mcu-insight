@@ -249,3 +249,31 @@ Measured on the signal-processing project with WiFi and MQTT connected:
 Cost: about 12 KB of flash and 2 KB of TX ring-buffer RAM. The agent falls back
 to the VFS path if the driver cannot be installed, so it never regresses to
 silence.
+## Case study: closing a 17 point accuracy gap
+
+The first waveform classifier was trained on an idealised simulation. On device
+its steady-state accuracy was 73% overall and 29% for the sine class. Two
+separate causes, both found from telemetry rather than by guessing:
+
+1. **Distribution shift.** A harmonic-profile diagnostic (fundamental plus
+   harmonics 2..5, printed by the board) showed the real signal chain leaves far
+   more harmonic content than the simulation: third harmonic 5.3% measured
+   against 0.1% simulated for a sine, a factor of 53. The model had learned that
+   a sine is almost pure, so a real sine looked like a triangle to it.
+2. **A label-ordering bug in the demo.** The demo rotated the DAC before the
+   inference ran, so that frame was labelled with the new waveform while still
+   carrying the old one. One frame in six was therefore always wrong.
+
+Fixes: capture 735 real feature vectors from the board and retrain on them, and
+read the label before rotating the source.
+
+| | simulated training | board-captured training |
+|---|---|---|
+| overall accuracy | 61% | 99% |
+| sine / square / triangle | 29% / 83% / 76% | 97% / 100% / 100% |
+| inference P50 / P99 | 10.3 / 13.5 ms | 7.3 / 10.5 ms |
+
+A caution from the same session: adding 26 KB of diagnostic code (the harmonic
+dump and a floating-point feature dump) moved the measured P50 from 7.5 ms to
+18.8 ms on an identical model. Latency is layout sensitive on this chip, so only
+compare builds that differ in the thing under test.
