@@ -156,3 +156,33 @@ measure.
 
 The agent compiles and links in both projects but has not been run on hardware
 yet; the first board session still has to confirm the frame format on the wire.
+## Hardware bring-up
+
+First run of the device agent on a real board (ESP32-D0WD-V3, 4 MB flash, COM19).
+Two defects showed up that no amount of host-side testing would have caught, and
+both were visible from the telemetry stream itself:
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Every task listed twice (`Sensor` and `sensor`) | the agent registered `sensor` while the scheduler calls the task `Sensor`; the duplicate check compared names case-sensitively | match on the handle, compare names case-insensitively |
+| `Guru Meditation Error (LoadStoreError)` about 10 s after every boot, inside `prvTaskCheckFreeStackSpace` | the agent cached `TaskHandle_t` values, but the ESP-IDF `main` task is deleted when `app_main` returns; the next report dereferenced a stale handle | store names, re-resolve with `xTaskGetHandle()` on every report, skip tasks that have exited |
+
+The second one is the interesting one: the board rebooted every ~10 s, which the
+collector saw as a reboot signature in the recovered frames, and `addr2line`
+against the ELF pinned the fault to the agent itself.
+
+Also found while measuring: the firmware was configured for 2 MB of flash while
+the chip has 4 MB. `esptool flash_id` settled it, and both projects now build
+with `CONFIG_ESPTOOLPY_FLASHSIZE_4MB`.
+
+### Reference capture
+
+71 s of a healthy run (light sensor project, no peripherals attached):
+
+```
+heap.free                  240,440 -> 205,272   (WiFi init costs ~35 KB)
+heap.min                   239,832 -> 200,120
+task.main.stack_free_min     2,076 ->   1,404   <- tightest non-idle task
+task.Monitor.stack_free_min  1,692 ->   1,596
+task.telemetry.stack_free_min 2,456 ->  2,152
+```

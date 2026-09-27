@@ -28,9 +28,11 @@ def render_summary(store: Store, device: str | None = None, top: int = 12) -> st
         span = store.uptime_range(name)
         seconds = (span[1] - span[0]) / 1000 if span else 0
         firmware = store.latest_firmware(name) or "-"
+        reboot_count = len(store.reboot_frames(name))
+        reboot_note = f"   {reboot_count} reboot(s)" if reboot_count else ""
         lines.append(
             f"  {name:<24} {store.frame_count(name):>6} frames   "
-            f"fw {firmware:<10} {seconds:,.1f} s of uptime"
+            f"fw {firmware:<10} {seconds:,.1f} s of uptime{reboot_note}"
         )
 
     target = device or devices[0]
@@ -39,13 +41,25 @@ def render_summary(store: Store, device: str | None = None, top: int = 12) -> st
         lines.append(f"No frames for device {target!r}.")
         return "\n".join(lines)
 
-    stats = store.metric_stats(target)
+    sessions = store.sessions(target)
+    since = None
+    if len(sessions) > 1:
+        start, _ = max(sessions, key=lambda item: item[1])
+        since = start
+        lines.append("")
+        lines.append(
+            f"  note: {len(sessions)} boot sessions in this capture; trends below "
+            f"cover the longest one ({store.frame_count(target, since_id=since)} frames)."
+        )
+
+    stats = store.metric_stats(target, since_id=since)
     ranked: list[MetricStats] = sorted(
         stats.values(), key=lambda s: (-abs(s.change), s.metric)
     )
+    frames_in_session = store.frame_count(target, since_id=since)
 
     lines.append("")
-    lines.append(f"Metric trends ({target}, {store.frame_count(target)} frames)")
+    lines.append(f"Metric trends ({target}, {frames_in_session} frames)")
     for entry in ranked[:top]:
         lines.append(
             f"  {entry.metric:<34} {format_number(entry.first):>10} -> "

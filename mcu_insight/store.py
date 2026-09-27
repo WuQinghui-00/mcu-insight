@@ -90,14 +90,15 @@ class Store:
         )
         return [row[0] for row in rows]
 
-    def frame_count(self, device: str | None = None) -> int:
+    def frame_count(self, device: str | None = None, since_id: int | None = None) -> int:
         if device is None:
             return int(self._conn.execute("SELECT COUNT(*) FROM frames").fetchone()[0])
-        return int(
-            self._conn.execute(
-                "SELECT COUNT(*) FROM frames WHERE device = ?", (device,)
-            ).fetchone()[0]
-        )
+        query = "SELECT COUNT(*) FROM frames WHERE device = ?"
+        params: list = [device]
+        if since_id is not None:
+            query += " AND id >= ?"
+            params.append(since_id)
+        return int(self._conn.execute(query, params).fetchone()[0])
 
     def uptime_range(self, device: str) -> tuple[float, float] | None:
         row = self._conn.execute(
@@ -116,12 +117,50 @@ class Store:
         ).fetchone()
         return row[0] if row else ""
 
-    def metric_stats(self, device: str) -> dict[str, MetricStats]:
+    def reboot_frames(self, device: str) -> list[int]:
+        """Frame ids where uptime_ms went backwards, i.e. the device restarted.
+
+        Reflashing or pressing reset mid-capture is normal, and the frames
+        before and after belong to different boot sessions; mixing them makes
+        trends meaningless.
+        """
         rows = self._conn.execute(
+            "SELECT id, uptime_ms FROM frames WHERE device = ? ORDER BY id", (device,)
+        ).fetchall()
+        reboots: list[int] = []
+        previous: float | None = None
+        for frame_id, uptime in rows:
+            if previous is not None and uptime < previous:
+                reboots.append(int(frame_id))
+            previous = uptime
+        return reboots
+
+    def sessions(self, device: str) -> list[tuple[int, int]]:
+        """Boot sessions as (first frame id, frame count), oldest first."""
+        rows = self._conn.execute(
+            "SELECT id, uptime_ms FROM frames WHERE device = ? ORDER BY id", (device,)
+        ).fetchall()
+        sessions: list[tuple[int, int]] = []
+        previous: float | None = None
+        for frame_id, uptime in rows:
+            if previous is None or uptime < previous:
+                sessions.append((int(frame_id), 0))
+            start, count = sessions[-1]
+            sessions[-1] = (start, count + 1)
+            previous = uptime
+        return sessions
+
+    def metric_stats(self, device: str, since_id: int | None = None) -> dict[str, MetricStats]:
+        query = (
             "SELECT s.metric, s.value FROM samples s JOIN frames f ON f.id = s.frame_id"
-            " WHERE f.device = ? ORDER BY f.id",
-            (device,),
+            " WHERE f.device = ?"
         )
+        params: list = [device]
+        if since_id is not None:
+            query += " AND f.id >= ?"
+            params.append(since_id)
+        query += " ORDER BY f.id"
+        rows = self._conn.execute(query, params)
         stats: dict[str, MetricStats] = {}
         for metric, value in rows:
             value = float(value)

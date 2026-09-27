@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 #include "esp_heap_caps.h"
 #include "esp_system.h"
@@ -17,11 +18,16 @@
 #define MCU_TELEMETRY_DEFAULT_PERIOD_MS 5000
 #define MCU_TELEMETRY_DEFAULT_STACK 4096
 
+/*
+ * Tasks are tracked by name rather than by handle. A handle goes stale as soon
+ * as the task exits - the ESP-IDF main task is deleted when app_main returns -
+ * and uxTaskGetStackHighWaterMark() on a stale handle reads freed memory and
+ * panics the chip. Names are re-resolved on every report instead, and tasks
+ * that have gone away are skipped.
+ */
 typedef struct {
     char name[16];
-    TaskHandle_t handle;
     uint32_t stack_size;
-    bool reported;
 } task_entry_t;
 
 typedef struct {
@@ -90,40 +96,49 @@ static void json_append(size_t *used, const char *format, ...)
     }
 }
 
-static bool task_already_listed(const char *name)
+static task_entry_t *find_task(const char *name)
 {
     for (size_t i = 0; i < s_task_count; ++i) {
-        if (strncmp(s_tasks[i].name, name, sizeof(s_tasks[i].name)) == 0) {
-            return true;
+        if (name != NULL && strcasecmp(s_tasks[i].name, name) == 0) {
+            return &s_tasks[i];
         }
     }
-    return false;
+    return NULL;
+}
+
+static void add_task(const char *name, uint32_t stack_size)
+{
+    if (name == NULL || name[0] == '\0' || s_task_count >= MCU_TELEMETRY_MAX_TASKS) {
+        return;
+    }
+    task_entry_t *existing = find_task(name);
+    if (existing != NULL) {
+        if (stack_size != 0) {
+            existing->stack_size = stack_size;
+        }
+        return;
+    }
+    task_entry_t *entry = &s_tasks[s_task_count++];
+    copy_sanitised(entry->name, sizeof(entry->name), name);
+    entry->stack_size = stack_size;
 }
 
 #if CONFIG_FREERTOS_USE_TRACE_FACILITY
-/*
- * Add every task the scheduler knows about that was not registered by hand.
- * Handles are looked up by name so that uxTaskGetStackHighWaterMark() is used
- * for all tasks, keeping the unit (bytes) identical.
- */
+/* Add every task the scheduler knows about that was not registered by hand. */
 static void discover_system_tasks(void)
 {
     static TaskStatus_t statuses[MCU_TELEMETRY_MAX_TASKS];
     UBaseType_t count = uxTaskGetSystemState(statuses, MCU_TELEMETRY_MAX_TASKS, NULL);
-    for (UBaseType_t i = 0; i < count && s_task_count < MCU_TELEMETRY_MAX_TASKS; ++i) {
-        const char *name = statuses[i].pcTaskName;
-        if (name == NULL || task_already_listed(name)) {
-            continue;
-        }
-        TaskHandle_t handle = xTaskGetHandle(name);
-        if (handle == NULL) {
-            continue;
-        }
-        task_entry_t *entry = &s_tasks[s_task_count++];
-        copy_sanitised(entry->name, sizeof(entry->name), name);
-        entry->handle = handle;
-        entry->stack_size = 0;
-        entry->reported = false;
+    /*
+     * The return value is the total number of tasks in the system, not the
+     * number of entries that were filled in. Clamp it, otherwise the loop
+     * below reads past the array.
+     */
+    if (count > MCU_TELEMETRY_MAX_TASKS) {
+        count = MCU_TELEMETRY_MAX_TASKS;
+    }
+    for (UBaseType_t i = 0; i < count; ++i) {
+        add_task(statuses[i].pcTaskName, 0);
     }
 }
 #else
@@ -141,15 +156,19 @@ static void append_tasks(size_t *used)
     json_append(used, ",\"tasks\":[");
     bool first = true;
     for (size_t i = 0; i < s_task_count; ++i) {
-        task_entry_t *entry = &s_tasks[i];
-        if (entry->handle == NULL) {
+        /*
+         * Resolve on every report: a task that exited since the last frame has
+         * no handle, and querying one would fault.
+         */
+        TaskHandle_t handle = xTaskGetHandle(s_tasks[i].name);
+        if (handle == NULL) {
             continue;
         }
-        uint32_t free_bytes = (uint32_t)uxTaskGetStackHighWaterMark(entry->handle);
+        uint32_t free_bytes = (uint32_t)uxTaskGetStackHighWaterMark(handle);
         json_append(used, "%s{\"name\":\"%s\",\"stack_free_min\":%u",
-                    first ? "" : ",", entry->name, (unsigned)free_bytes);
-        if (entry->stack_size != 0) {
-            json_append(used, ",\"stack_total\":%u", (unsigned)entry->stack_size);
+                    first ? "" : ",", s_tasks[i].name, (unsigned)free_bytes);
+        if (s_tasks[i].stack_size != 0) {
+            json_append(used, ",\"stack_total\":%u", (unsigned)s_tasks[i].stack_size);
         }
         json_append(used, "}");
         first = false;
@@ -259,26 +278,15 @@ esp_err_t mcu_telemetry_start(const mcu_telemetry_config_t *config)
     return ESP_OK;
 }
 
-esp_err_t mcu_telemetry_register_task(const char *name, TaskHandle_t handle, uint32_t stack_size)
+esp_err_t mcu_telemetry_register_task(const char *name, uint32_t stack_size)
 {
-    if (name == NULL || handle == NULL) {
+    if (name == NULL || name[0] == '\0') {
         return ESP_ERR_INVALID_ARG;
     }
-    for (size_t i = 0; i < s_task_count; ++i) {
-        if (strncmp(s_tasks[i].name, name, sizeof(s_tasks[i].name)) == 0) {
-            s_tasks[i].handle = handle;
-            s_tasks[i].stack_size = stack_size;
-            return ESP_OK;
-        }
-    }
-    if (s_task_count >= MCU_TELEMETRY_MAX_TASKS) {
+    if (find_task(name) == NULL && s_task_count >= MCU_TELEMETRY_MAX_TASKS) {
         return ESP_ERR_NO_MEM;
     }
-    task_entry_t *entry = &s_tasks[s_task_count++];
-    copy_sanitised(entry->name, sizeof(entry->name), name);
-    entry->handle = handle;
-    entry->stack_size = stack_size;
-    entry->reported = false;
+    add_task(name, stack_size);
     return ESP_OK;
 }
 
@@ -288,7 +296,7 @@ void mcu_telemetry_set_custom_int(const char *key, int32_t value)
         return;
     }
     for (size_t i = 0; i < MCU_TELEMETRY_MAX_CUSTOM; ++i) {
-        if (s_custom[i].used && strncmp(s_custom[i].key, key, sizeof(s_custom[i].key)) == 0) {
+        if (s_custom[i].used && strcasecmp(s_custom[i].key, key) == 0) {
             s_custom[i].value = value;
             return;
         }

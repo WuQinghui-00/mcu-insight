@@ -149,6 +149,15 @@ class StoreTest(unittest.TestCase):
             self.store.add(parse_frame(line(seq=seq, uptime_ms=seq, heap={"free": free})))
         self.assertEqual(self.store.series("esp32-light-monitor", "heap.free"), [(0.0, 100.0), (1.0, 200.0), (2.0, 300.0)])
 
+    def test_reboot_is_detected_and_trends_restart(self) -> None:
+        for uptime, free in [(1000, 100), (2000, 90), (500, 200), (1500, 180)]:
+            self.store.add(parse_frame(line(uptime_ms=uptime, heap={"free": free})))
+        self.assertEqual(self.store.reboot_frames("esp32-light-monitor"), [3])
+        self.assertEqual(self.store.sessions("esp32-light-monitor"), [(1, 2), (3, 2)])
+        stats = self.store.metric_stats("esp32-light-monitor", since_id=3)["heap.free"]
+        self.assertEqual((stats.first, stats.last), (200.0, 180.0))
+        self.assertEqual(self.store.frame_count("esp32-light-monitor", since_id=3), 2)
+
     def test_summary_mentions_the_device(self) -> None:
         self.store.add(parse_frame(line()))
         text = render_summary(self.store)

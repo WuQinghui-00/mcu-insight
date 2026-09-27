@@ -19,7 +19,7 @@
 #define MCU_TELEMETRY_SCHEMA_VERSION 1
 
 /* Capacity of the registered task table and the custom metric table. */
-#define MCU_TELEMETRY_MAX_TASKS 12
+#define MCU_TELEMETRY_MAX_TASKS 16
 #define MCU_TELEMETRY_MAX_CUSTOM 8
 
 typedef struct {
@@ -41,14 +41,17 @@ typedef struct {
 esp_err_t mcu_telemetry_start(const mcu_telemetry_config_t *config);
 
 /*
- * Add a task to every report.  `stack_size` is the size passed to xTaskCreate
- * (the RTOS does not expose it), pass 0 when unknown.
+ * Add a task to every report.  `name` must match the name passed to
+ * xTaskCreate; the agent resolves the handle on every report so that a task
+ * which exits later is skipped instead of being dereferenced.  `stack_size` is
+ * the size passed to xTaskCreate (the RTOS does not expose it), pass 0 when
+ * unknown.
  *
  * When CONFIG_FREERTOS_USE_TRACE_FACILITY is enabled any remaining task is
  * discovered automatically, which is how httpd / mqtt / wifi tasks show up
  * without being registered by hand.
  */
-esp_err_t mcu_telemetry_register_task(const char *name, TaskHandle_t handle, uint32_t stack_size);
+esp_err_t mcu_telemetry_register_task(const char *name, uint32_t stack_size);
 
 /*
  * Attach a project specific integer metric, e.g. loop period in milliseconds
