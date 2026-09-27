@@ -68,6 +68,19 @@ static TaskHandle_t s_task;
 static uint32_t s_seq;
 static char s_buffer[MCU_TELEMETRY_BUFFER_SIZE];
 static bool s_uart_ready;
+
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+#define MCU_TELEMETRY_MAX_IDLE 2
+
+typedef struct {
+    char name[16];
+    uint32_t last_counter;
+    bool used;
+} idle_track_t;
+
+static idle_track_t s_idle[MCU_TELEMETRY_MAX_IDLE];
+static int64_t s_idle_last_us;
+#endif
 static uint32_t s_uart_retries;
 
 /* ------------------------------------------------------------------ */
@@ -470,6 +483,75 @@ static void sample_power_stats(void)
 }
 #endif
 
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+/*
+ * Publish how much of each core's time is spent inside its idle task.
+ *
+ * This is the metric that catches a busy-wait or a tight polling loop: it eats
+ * the core without allocating memory or growing a stack, so no memory metric
+ * would notice it. Requires CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS, where the
+ * counter is microseconds (uint32, so deltas wrap safely).
+ */
+static void sample_idle_fractions(void)
+{
+    static TaskStatus_t statuses[MCU_TELEMETRY_MAX_TASKS];
+    UBaseType_t count = uxTaskGetSystemState(statuses, MCU_TELEMETRY_MAX_TASKS, NULL);
+    if (count > MCU_TELEMETRY_MAX_TASKS) {
+        count = MCU_TELEMETRY_MAX_TASKS;
+    }
+
+    int64_t now = esp_timer_get_time();
+    int64_t elapsed = now - s_idle_last_us;
+    s_idle_last_us = now;
+    if (elapsed <= 0) {
+        return;
+    }
+
+    for (UBaseType_t i = 0; i < count; ++i) {
+        const char *name = statuses[i].pcTaskName;
+        if (name == NULL || strncasecmp(name, "IDLE", 4) != 0) {
+            continue;
+        }
+
+        idle_track_t *track = NULL;
+        for (size_t k = 0; k < MCU_TELEMETRY_MAX_IDLE; ++k) {
+            if (s_idle[k].used && strcasecmp(s_idle[k].name, name) == 0) {
+                track = &s_idle[k];
+                break;
+            }
+        }
+        if (track == NULL) {
+            for (size_t k = 0; k < MCU_TELEMETRY_MAX_IDLE; ++k) {
+                if (!s_idle[k].used) {
+                    track = &s_idle[k];
+                    copy_sanitised(track->name, sizeof(track->name), name);
+                    track->used = true;
+                    track->last_counter = statuses[i].ulRunTimeCounter;
+                    track = NULL;       /* first sample is only a reference */
+                    break;
+                }
+            }
+            continue;
+        }
+
+        uint32_t delta = statuses[i].ulRunTimeCounter - track->last_counter;
+        track->last_counter = statuses[i].ulRunTimeCounter;
+
+        int percent = (int)(((int64_t)delta * 100) / elapsed);
+        if (percent > 100) {
+            percent = 100;
+        }
+        char key[24];
+        size_t k = 0;
+        for (; track->name[k] != '\0' && k < 12; ++k) {
+            key[k] = (char)tolower((unsigned char)track->name[k]);
+        }
+        snprintf(key + k, sizeof(key) - k, "_pct");
+        mcu_telemetry_set_custom_int(key, percent);
+    }
+}
+#endif
+
 static void telemetry_task(void *argument)
 {
     (void)argument;
@@ -483,6 +565,9 @@ static void telemetry_task(void *argument)
         }
 #if CONFIG_PM_ENABLE
         sample_power_stats();
+#endif
+#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+        sample_idle_fractions();
 #endif
         report();
         /* Returns early when mcu_telemetry_report_now() pokes the task. */
