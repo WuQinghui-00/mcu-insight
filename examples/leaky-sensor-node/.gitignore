@@ -1,0 +1,6 @@
+# Vendored by tools/sync_firmware.py from firmware/esp-idf/mcu_telemetry, so it
+# is not a second copy of the source.
+components/
+build/
+sdkconfig
+sdkconfig.old

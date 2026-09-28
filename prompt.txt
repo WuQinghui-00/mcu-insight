@@ -1,0 +1,252 @@
+你在诊断一个 ESP-IDF / FreeRTOS 固件的资源问题，目标芯片是 ESP32 系列。
+
+只根据下面的证据回答，不要用别的东西：
+
+1. 每条事实都要引用证据编号，例如 [E12]。没有编号的说法就是猜，而猜比不说更糟。
+2. 如果证据分不清两种可能，就直说，并指出哪一种测量能把它们分开。
+3. 不要编造指标名、数值、文件名或配置项；证据包里没有但你需要的，直接开口要。
+4. 检查只告诉你"越界了"，不告诉你"为什么"。为什么要从时序、构建数字和补丁里推。
+
+按这个格式回答，用中文：
+
+- 根因：最可能的那一个，给一个置信度，并列出支撑它的证据编号。
+- 其它可能：还有什么会造成同样现象，以及哪个观察能排除它。
+- 修复：针对根因的最小改动。
+- 验证：改完之后跑哪条命令、哪个指标应该动、大致动多少。
+
+证据
+----
+MCU-INSIGHT EVIDENCE PACK
+[E1] device leaky-sensor-node (firmware unknown)
+[E2] capture 30 frames over 1 boot session(s) from captures\my-leak.db
+[E3] budget file budgets\leaky-sensor-node.json
+[E4] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
+[E5] VIOLATION heap.free: falls at -660.0 per second, slope >= -64/s over >= 60 s of steady state
+[E6] VIOLATION task.format.stack_free_min: 56 is below 256
+[E7] rule heap.min min >= 100000
+[E8] rule heap.free slope >= -64/s over >= 60 s of steady state
+[E9] rule task.*.stack_free_min min >= 256
+[E10] rule custom.idle*_pct min >= 40
+[E11] metric heap.free (B, instantaneous sample): last 185,660, min 185,660, max 283,908 over 30 samples
+[E12] series heap.free [B]: 35ms=283,908, 5,033ms=278,068, 10,032ms=274,760, 15,032ms=271,460, 20,032ms=268,160, 25,032ms=264,860, 30,032ms=261,560, 35,032ms=258,260, 40,032ms=254,960, 45,032ms=251,660, 50,032ms=248,360, 55,032ms=245,060, 60,032ms=241,760, 65,032ms=238,460, 70,032ms=235,160, 75,032ms=231,860, 80,032ms=228,560, 85,032ms=225,260, 90,032ms=221,960, 95,032ms=218,660, 100,032ms=215,360, 105,032ms=212,060, 110,032ms=208,760, 115,032ms=205,460, 120,032ms=202,160, 125,032ms=198,860, 130,032ms=195,560, 135,032ms=192,260, 140,032ms=188,960, 145,032ms=185,660
+[E13] metric task.format.stack_free_min (B, high-water mark, monotonic since boot): last 56, min 56, max 56 over 29 samples
+[E14] series task.format.stack_free_min: constant at 56 across 29 samples
+[E15] metric heap.min (B, high-water mark, monotonic since boot): last 185,568, min 185,568, max 283,908 over 30 samples
+[E16] series heap.min [B]: 35ms=283,908, 5,033ms=276,912, 10,032ms=274,668, 15,032ms=271,368, 20,032ms=268,068, 25,032ms=264,768, 30,032ms=261,468, 35,032ms=258,168, 40,032ms=254,868, 45,032ms=251,568, 50,032ms=248,268, 55,032ms=244,968, 60,032ms=241,668, 65,032ms=238,368, 70,032ms=235,068, 75,032ms=231,768, 80,032ms=228,468, 85,032ms=225,168, 90,032ms=221,868, 95,032ms=218,568, 100,032ms=215,268, 105,032ms=211,968, 110,032ms=208,668, 115,032ms=205,368, 120,032ms=202,068, 125,032ms=198,768, 130,032ms=195,468, 135,032ms=192,168, 140,032ms=188,868, 145,032ms=185,568
+[E17] metric heap.largest (B, instantaneous sample): last 110,592, min 110,592, max 155,648 over 30 samples
+[E18] series heap.largest [B]: 35ms=155,648, 5,033ms=147,456, 10,032ms=139,264, 15,032ms=139,264, 20,032ms=139,264, 25,032ms=131,072, 30,032ms=131,072, 35,032ms=126,976, 40,032ms=126,976, 45,032ms=122,880, 50,032ms=118,784, 55,032ms=114,688, 60,032ms=110,592, 65,032ms=110,592, 70,032ms=110,592, 75,032ms=110,592, 80,032ms=110,592, 85,032ms=110,592, 90,032ms=110,592, 95,032ms=110,592, 100,032ms=110,592, 105,032ms=110,592, 110,032ms=110,592, 115,032ms=110,592, 120,032ms=110,592, 125,032ms=110,592, 130,032ms=110,592, 135,032ms=110,592, 140,032ms=110,592, 145,032ms=110,592
+[E19] metric task.main.stack_free_min (B, high-water mark, monotonic since boot): last 2,072, min 2,072, max 2,072 over 1 samples
+[E20] series task.main.stack_free_min: constant at 2,072 across 1 samples
+[E21] metric task.telemetry.stack_free_min (B, high-water mark, monotonic since boot): last 2,412, min 2,412, max 2,412 over 30 samples
+[E22] series task.telemetry.stack_free_min: constant at 2,412 across 30 samples
+[E23] metric task.IDLE0.stack_free_min (B, high-water mark, monotonic since boot): last 1,028, min 1,028, max 1,236 over 30 samples
+[E24] series task.IDLE0.stack_free_min [B]: 35ms=1,236, 5,033ms=1,028, 10,032ms=1,028, 15,032ms=1,028, 20,032ms=1,028, 25,032ms=1,028, 30,032ms=1,028, 35,032ms=1,028, 40,032ms=1,028, 45,032ms=1,028, 50,032ms=1,028, 55,032ms=1,028, 60,032ms=1,028, 65,032ms=1,028, 70,032ms=1,028, 75,032ms=1,028, 80,032ms=1,028, 85,032ms=1,028, 90,032ms=1,028, 95,032ms=1,028, 100,032ms=1,028, 105,032ms=1,028, 110,032ms=1,028, 115,032ms=1,028, 120,032ms=1,028, 125,032ms=1,028, 130,032ms=1,028, 135,032ms=1,028, 140,032ms=1,028, 145,032ms=1,028
+[E25] metric task.IDLE1.stack_free_min (B, high-water mark, monotonic since boot): last 1,024, min 1,024, max 1,024 over 30 samples
+[E26] series task.IDLE1.stack_free_min: constant at 1,024 across 30 samples
+[E27] metric task.Tmr Svc.stack_free_min (B, high-water mark, monotonic since boot): last 1,548, min 1,548, max 1,548 over 30 samples
+[E28] series task.Tmr Svc.stack_free_min: constant at 1,548 across 30 samples
+[E29] metric task.ipc0.stack_free_min (B, high-water mark, monotonic since boot): last 504, min 504, max 504 over 30 samples
+[E30] series task.ipc0.stack_free_min: constant at 504 across 30 samples
+[E31] metric task.ipc1.stack_free_min (B, high-water mark, monotonic since boot): last 496, min 496, max 496 over 30 samples
+[E32] series task.ipc1.stack_free_min: constant at 496 across 30 samples
+[E33] metric task.sample.stack_free_min (B, high-water mark, monotonic since boot): last 1,860, min 1,860, max 1,860 over 29 samples
+[E34] series task.sample.stack_free_min: constant at 1,860 across 29 samples
+[E35] metric custom.idle1_pct (%, instantaneous sample): last 100, min 99, max 100 over 29 samples
+[E36] series custom.idle1_pct [%]: 5,033ms=99, 10,032ms=100, 15,032ms=100, 20,032ms=99, 25,032ms=100, 30,032ms=100, 35,032ms=100, 40,032ms=100, 45,032ms=100, 50,032ms=100, 55,032ms=99, 60,032ms=100, 65,032ms=100, 70,032ms=100, 75,032ms=100, 80,032ms=100, 85,032ms=100, 90,032ms=100, 95,032ms=99, 100,032ms=100, 105,032ms=100, 110,032ms=100, 115,032ms=100, 120,032ms=99, 125,032ms=100, 130,032ms=99, 135,032ms=100, 140,032ms=100, 145,032ms=100
+[E37] metric custom.idle0_pct (%, instantaneous sample): last 99, min 99, max 99 over 29 samples
+[E38] series custom.idle0_pct: constant at 99 across 29 samples
+[E39] metric custom.formatted_len (instantaneous sample): last 9, min 8, max 9
+[E40] metric custom.payload_first_byte (instantaneous sample): last 123, min 123, max 123; first byte of the buffer allocated for this sample; it never goes back
+[E41] metric custom.sample_raw (instantaneous sample): last 63,387, min 3,207, max 65,175; the fake sensor reading, changing every sample
+[E42] metric custom.uart_tx_retries (count, counter since boot): last 0, min 0, max 0
+[E43] metric task.format.stack_total (B, configured stack size): last 3,072, min 3,072, max 3,072
+[E44] metric task.sample.stack_total (B, configured stack size): last 3,072, min 3,072, max 3,072
+[E45] metric uptime_ms (ms, clock since boot): last 145,032, min 35, max 145,032
+[E46] config examples\leaky-sensor-node\sdkconfig: CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y; CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL=2; CONFIG_COMPILER_OPTIMIZATION_DEBUG=y; CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y; CONFIG_COMPILER_OPTIMIZATION_LEVEL_DEBUG=y; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=160; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y; CONFIG_ESP_INT_WDT=y; CONFIG_ESP_INT_WDT_CHECK_CPU1=y; CONFIG_ESP_INT_WDT_TIMEOUT_MS=300; CONFIG_ESP_MAIN_TASK_STACK_SIZE=3584; CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2304; CONFIG_ESP_TASK_WDT=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=y; CONFIG_ESP_TASK_WDT_EN=y; CONFIG_ESP_TASK_WDT_INIT=y; CONFIG_ESP_TASK_WDT_TIMEOUT_S=5; CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584; CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y; CONFIG_FREERTOS_HZ=100; CONFIG_LOG_DEFAULT_LEVEL=3; CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+[E47] working tree examples\leaky-sensor-node at b4f1f82 chore: run the tests on every push, and finish tidying for the public repo
+[E48] modified A  ../../budgets/leaky-sensor-node.json
+[E49] modified A  ../../captures/my-leak.db
+[E50] modified A  .gitignore
+[E51] modified A  CMakeLists.txt
+[E52] modified A  main/CMakeLists.txt
+[E53] modified A  main/main.c
+[E54] modified A  sdkconfig.defaults
+[E55] modified A  ../../my-leak.html
+[E56] diffstat budgets/leaky-sensor-node.json                 |  12 ++++
+[E57] diffstat captures/my-leak.db                            | Bin 0 -> 86016 bytes
+[E58] diffstat examples/leaky-sensor-node/.gitignore          |   6 ++
+[E59] diffstat examples/leaky-sensor-node/CMakeLists.txt      |  16 +++++
+[E60] diffstat examples/leaky-sensor-node/main/CMakeLists.txt |   5 ++
+[E61] diffstat examples/leaky-sensor-node/main/main.c         |  90 +++++++++++++++++++++++++
+[E62] diffstat examples/leaky-sensor-node/sdkconfig.defaults  |   5 ++
+[E63] diffstat my-leak.html                                   |  34 ++++++++++
+[E64] diffstat 8 files changed, 168 insertions(+)
+[E65] patch (since HEAD): 221 line(s)
+[E66] patch file budgets/leaky-sensor-node.json:
+      new file mode 100644
+      index 0000000..6fe4e57
+      --- /dev/null
+      +++ b/budgets/leaky-sensor-node.json
+      @@ -0,0 +1,12 @@
+      +{
+      +  "rules": [
+      +    {"metric": "heap.min", "min": 100000, "stat": "min"},
+      +    {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
+      +    {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},
+      +    {"metric": "custom.idle*_pct", "min": 40, "stat": "min"}
+      +  ],
+      +  "metrics": {
+      +    "custom.sample_raw": {"description": "the fake sensor reading, changing every sample"},
+      +    "custom.payload_first_byte": {"description": "first byte of the buffer allocated for this sample; it never goes back"}
+      +  }
+      +}
+      \ No newline at end of file
+[E67] patch file captures/my-leak.db:
+      new file mode 100644
+      index 0000000..2ddaf67
+      Binary files /dev/null and b/captures/my-leak.db differ
+[E68] patch file examples/leaky-sensor-node/.gitignore:
+      new file mode 100644
+      index 0000000..c7e5556
+      --- /dev/null
+      +++ b/examples/leaky-sensor-node/.gitignore
+      @@ -0,0 +1,6 @@
+      +# Vendored by tools/sync_firmware.py from firmware/esp-idf/mcu_telemetry, so it
+      +# is not a second copy of the source.
+      +components/
+      +build/
+      +sdkconfig
+      +sdkconfig.old
+      \ No newline at end of file
+[E69] patch file examples/leaky-sensor-node/CMakeLists.txt:
+      new file mode 100644
+      index 0000000..ee626ed
+      --- /dev/null
+      +++ b/examples/leaky-sensor-node/CMakeLists.txt
+      @@ -0,0 +1,16 @@
+      +# The same shape as a normal ESP-IDF project: the telemetry agent is vendored
+      +# into components/ by tools/sync_firmware.py, which is why that directory is
+      +# not committed here.
+      +#
+      +# The guard is the point. Unconditional, a build attempted before step 1 stops
+      +# with "Directory specified in EXTRA_COMPONENT_DIRS doesn't exist", which says
+      +# nothing about the step that was skipped. Guarded, the build gets far enough
+      +# to report the component it cannot find, which names it.
+      +cmake_minimum_required(VERSION 3.16)
+      +
+      +if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/components")
+      +    set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components")
+      +endif()
+      +
+      +include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+      +project(leaky_sensor_node)
+      \ No newline at end of file
+[E70] patch file examples/leaky-sensor-node/main/CMakeLists.txt:
+      new file mode 100644
+      index 0000000..481f91c
+      --- /dev/null
+      +++ b/examples/leaky-sensor-node/main/CMakeLists.txt
+      @@ -0,0 +1,5 @@
+      +idf_component_register(SRCS "main.c"
+      +    INCLUDE_DIRS "."
+      +    REQUIRES driver esp_timer freertos mcu_telemetry)
+      +
+      +target_compile_options(${COMPONENT_TARGET} PRIVATE -Wno-error)
+      \ No newline at end of file
+[E71] patch file examples/leaky-sensor-node/main/main.c:
+      new file mode 100644
+      index 0000000..f0122eb
+      --- /dev/null
+      +++ b/examples/leaky-sensor-node/main/main.c
+      @@ -0,0 +1,90 @@
+      +/*
+      + * A deliberately flawed sensor node.
+      + *
+      + * Everything here is the shape of an ordinary small firmware, except one
+      + * thing: sample_task() allocates PAYLOAD_BYTES for every sample and never
+      + * releases them. One sample every 200 ms is 128 bytes every 200 ms, which is
+      + * 640 bytes per second, and that is the number the free heap slope should
+      + * measure. The leak is kept alive by handing the pointer to a volatile, so the
+      + * optimizer cannot delete the allocation the way it deletes an unused one.
+      + *
+      + * The second task is not a bug, but it is tight on purpose: a 1800 byte array
+      + * on a 3072 byte stack leaves roughly a kilobyte. A rule with a 256 byte floor
+      + * will not fire, and the trend should still show it.
+      + */
+      +#include <stdio.h>
+      +#include <stdlib.h>
+      +#include <string.h>
+      +
+      +#include "freertos/FreeRTOS.h"
+      +#include "freertos/task.h"
+      +#include "esp_log.h"
+      +#include "mcu_telemetry.h"
+      +
+      +#define SAMPLE_PERIOD_MS 200
+      +#define PAYLOAD_BYTES    128     /* allocated per sample, never freed */
+      +#define SAMPLE_STACK     3072
+      +#define FORMAT_STACK     3072
+      +#define FORMAT_SCRATCH   1800    /* large, and on the stack */
+      +
+      +static const char *TAG = "sensor";
+      +
+      +static volatile int32_t s_raw;
+      +static volatile void *s_retained;      /* what "publishing" keeps */
+      +static int32_t s_alloc_failures;
+      +
+      +static int32_t read_sensor(void)
+      +{
+      +    s_raw = (int32_t)((s_raw * 1103515245 + 12345) & 0xffff);
+      +    return s_raw;
+      +}
+      +
+      +static void sample_task(void *arg)
+      +{
+      +    (void)arg;
+      +    for (;;) {
+      +        int32_t raw = read_sensor();
+      +
+      +        char *payload = malloc(PAYLOAD_BYTES);
+      +        if (payload != NULL) {
+      +            snprintf(payload, PAYLOAD_BYTES, "{\"raw\":%d}", (int)raw);
+      +            s_retained = payload;                  /* published, never released */
+      +            mcu_telemetry_set_custom_int("payload_first_byte", payload[0]);
+      +        } else {
+      +            s_alloc_failures++;
+      +            mcu_telemetry_set_custom_int("alloc_failures", s_alloc_failures);
+      +        }
+      +
+      +        mcu_telemetry_set_custom_int("sample_raw", raw);
+      +        vTaskDelay(pdMS_TO_TICKS(SAMPLE_PERIOD_MS));
+      +    }
+      +}
+      +
+      +static void format_task(void *arg)
+      +{
+      +    (void)arg;
+      +    for (;;) {
+      +        char scratch[FORMAT_SCRATCH];
+      +        snprintf(scratch, sizeof scratch, "lux=%ld", (long)read_sensor());
+      +        mcu_telemetry_set_custom_int("formatted_len", (int32_t)strlen(scratch));
+      +        vTaskDelay(pdMS_TO_TICKS(1000));
+      +    }
+      +}
+      +
+      +static const mcu_telemetry_config_t telemetry = {
+      +        .device = "leaky-sensor-node",
+      +        .report_period_ms = 5000,
+      +    };
+      +
+      +void app_main(void)
+      +{
+      +
+      +    ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
+      +
+      +    xTaskCreate(sample_task, "sample", SAMPLE_STACK, NULL, 5, NULL);
+      +    mcu_telemetry_register_task("sample", SAMPLE_STACK);
+      +    xTaskCreate(format_task, "format", FORMAT_STACK, NULL, 4, NULL);
+      +    mcu_telemetry_register_task("format", FORMAT_STACK);
+      +
+      +    ESP_LOGI(TAG, "sensor node up");
+      +}
+      \ No newline at end of file

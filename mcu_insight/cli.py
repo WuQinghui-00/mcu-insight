@@ -264,7 +264,11 @@ def cmd_model(args: argparse.Namespace) -> int:
 def cmd_collect(args: argparse.Namespace) -> int:
     with Store(args.db) as store:
         try:
-            stats = collect(args.source, store, limit=args.limit, verbose=args.verbose)
+            stats = collect(args.source, store, limit=args.limit,
+                            verbose=args.verbose, quiet=args.quiet)
+        except KeyboardInterrupt:
+            print("stopped early; every frame received so far is already stored")
+            return 0
         except (RuntimeError, ValueError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2

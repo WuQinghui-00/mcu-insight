@@ -1,0 +1,5 @@
+# Turned on so the example reports every task and the idle share without anyone
+# having to open menuconfig first.
+CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=3584

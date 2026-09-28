@@ -683,6 +683,20 @@ def pack_metric_prefixes(names: set[str]) -> set[str]:
     return prefixes
 
 
+def pack_rule_names(evidence_text: str) -> set[str]:
+    """Names the rules themselves introduce.
+
+    A rule written as ``custom.idle*_pct`` makes ``custom.idle`` a name an
+    answer may legitimately use, and the name check should not call that
+    invented.
+    """
+    names = set()
+    for line in evidence_text.splitlines():
+        if "] rule " in line:
+            names.update(DOTTED.findall(line))
+    return names
+
+
 def pack_metric_families(evidence_text: str) -> set[str]:
     """First segment of every metric name in the pack: heap, task, custom, ..."""
     families = set()
@@ -745,7 +759,9 @@ def audit_answer(answer: str, evidence_text: str) -> dict:
     a claim with no citation at all.
     """
     known_ids = pack_evidence_ids(evidence_text)
-    known_names = pack_metric_names(evidence_text) | pack_metric_prefixes(pack_metric_names(evidence_text))
+    metric_names = pack_metric_names(evidence_text)
+    known_names = (metric_names | pack_metric_prefixes(metric_names)
+                   | pack_rule_names(evidence_text))
     families = pack_metric_families(evidence_text)
 
     cited = [f"E{int(match)}" for match in CITATION.findall(answer)]
@@ -800,54 +816,60 @@ def render_audit(result: dict) -> str:
         lines.append("RESULT: the answer cites an evidence id that does not exist")
     return "\n".join(lines) + "\n"
 
-PROMPT_EN = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
-on an ESP32-class device.
+PROMPT_EN = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware.
 
-Answer from the evidence below and nothing else:
+Answer from the evidence below and nothing else.
+
+How to answer:
 
 1. Cite an evidence id such as [E12] for every factual claim. A claim with no id
    is a guess, and a guess is worse than saying nothing.
-2. If the evidence cannot separate two explanations, say so, and name the
-   measurement that would separate them.
-3. Do not invent metric names, values, files or configuration keys. If the pack
-   does not contain something you need, ask for it.
-4. The checks only say *that* a budget was missed. Explain *why*, using the
-   series, the build numbers and the diff.
+2. Do not invent metric names, values, files or configuration keys.
+3. The checks only say *that* a budget was missed. Explain *why*, from the
+   series and the diff.
+4. Be short. This is a conclusion for a busy engineer, not an essay.
 
-Answer in this shape:
+Shape it exactly like this and add nothing else. At most three bullets per
+section, one sentence each, 400 words in total:
 
-- Root cause: the single most likely one, a confidence level, and the evidence
-   ids behind it.
-- Alternatives: what else could produce this, and which observation would rule
-   each one out.
-- Fix: the smallest change that addresses the root cause.
-- Verification: which command to run afterwards and which metric should move,
-   and by roughly how much.
+- Cause: the single most likely one, a confidence, and its evidence ids.
+- Numbers: the measurement next to the code that explains it, for example
+  "-660 B/s, which is 128 bytes every 200 ms".
+- Cannot rule out: only what the evidence genuinely cannot separate, one line
+  each. If there is nothing, write "none".
+- Fix: one sentence, naming the file and the line to change.
+- Verify: one command, the metric that should move, and the value to expect.
+
+Do not restate the evidence pack. Do not explain the tool.
 
 EVIDENCE
 --------
 """
 
-PROMPT_ZH = """你在诊断一个 ESP-IDF / FreeRTOS 固件的资源问题，目标芯片是 ESP32 系列。
+PROMPT_ZH = """你在诊断一个 ESP-IDF / FreeRTOS 固件的资源问题。
 
-只根据下面的证据回答，不要用别的东西：
+只根据下面的证据回答，不要用别的东西。
+
+回答要求：
 
 1. 每条事实都要引用证据编号，例如 [E12]。没有编号的说法就是猜，而猜比不说更糟。
-2. 如果证据分不清两种可能，就直说，并指出哪一种测量能把它们分开。
-3. 不要编造指标名、数值、文件名或配置项；证据包里没有但你需要的，直接开口要。
-4. 检查只告诉你"越界了"，不告诉你"为什么"。为什么要从时序、构建数字和补丁里推。
+2. 不要编造指标名、数值、文件名或配置项。
+3. 检查只告诉你越界了，不告诉你为什么。为什么，要从时序和补丁里推。
+4. 写短。这是给忙人看的一段结论，不是一篇论文。
 
-按这个格式回答，用中文：
+严格按下面这个格式写，别加别的内容。每节最多 3 条，每条一句话，全文不超过 400 字，用中文：
 
-- 根因：最可能的那一个，给一个置信度，并列出支撑它的证据编号。
-- 其它可能：还有什么会造成同样现象，以及哪个观察能排除它。
-- 修复：针对根因的最小改动。
-- 验证：改完之后跑哪条命令、哪个指标应该动、大致动多少。
+- 根因：最可能的那一个，给一个置信度，附证据编号。
+- 关键数字：把测量和代码对上，例如「-660 B/s，也就是每 200 ms 分配 128 字节」。
+- 排除不掉的可能：只写现有证据真的分不开的，一条一行；没有就写「无」。
+- 修复：一句话，指到哪个文件哪一行。
+- 验证：一条命令，哪个指标应该变成多少。
+
+不要复述证据包，不要解释这个工具。
 
 证据
 ----
 """
-
 
 def build_prompt(evidence_text: str, lang: str = "en") -> str:
     """The instruction block plus the pack, ready to hand to a model.

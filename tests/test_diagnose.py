@@ -335,6 +335,24 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertFalse(trimmed["truncated"])
         self.assertEqual(render_evidence(pack), text)
 
+    def test_the_prompt_asks_for_a_short_answer(self):
+        prompt = build_prompt("[E1] x")
+        self.assertIn("400 words", prompt)
+        self.assertIn("Be short", prompt)
+        self.assertIn("Do not restate the evidence pack", prompt)
+
+    def test_the_chinese_prompt_asks_for_the_same_short_shape(self):
+        prompt = build_prompt("[E1] x", lang="zh")
+        self.assertIn("不超过 400 字", prompt)
+        self.assertIn("不要复述证据包", prompt)
+
+    def test_a_wildcard_rule_makes_its_prefix_a_known_name(self):
+        # custom.idle*_pct is a rule, so custom.idle is a name the answer may
+        # use; calling it invented was a false positive.
+        text = "[E1] device board\n[E5] rule custom.idle*_pct min >= 40"
+        result = audit_answer("The custom.idle share is fine [E5].", text)
+        self.assertEqual([], result["unknown_metrics"])
+        self.assertTrue(result["ok"])
     def test_the_prompt_can_ask_for_a_chinese_answer(self):
         prompt = build_prompt("[E1] device board", lang="zh")
         self.assertIn("用中文", prompt)

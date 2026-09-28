@@ -49,6 +49,7 @@ pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13p
       margin: 8px 0 0; white-space: pre; }
 pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
 .note { color: #6b7280; font-size: 13.5px; margin: 8px 0 0; }
+table.errors td:first-child { white-space: normal; }
 ul { margin: 6px 0 0; padding-left: 20px; }
 li { margin-bottom: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -114,6 +115,16 @@ mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
 
 /* 可选：任何函数的耗时分布，在调用处加一行，自动出 p50 / p99 / 最大 / 最小 */
 mcu_telemetry_histogram_add("infer", latency_us);"""
+CMAKE_GUARDED = """# My-Project/CMakeLists.txt
+cmake_minimum_required(VERSION 3.16)
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/components")
+    set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components")
+endif()
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(my_app)"""
+
 CMAKE_SNIPPET = """# My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS "main.c"
@@ -216,6 +227,29 @@ TEXT = {
         "title": "MCU-Insight: measure an ESP32 project, then explain it",
         "page_title": "MCU-Insight - do this, one step at a time",
         "story": "What this is",
+        "paths": "Two paths to write down first",
+        "paths_d": "Every command below starts with cd, so it works from wherever your shell happens to be. Replace the two placeholders with your own paths:",
+        "path_tool": "tool-repo = the directory you cloned mcu-insight into; it contains docs\\ and mcu_insight\\",
+        "path_project": "your-project = your ESP-IDF project directory, the one with CMakeLists.txt in it (the directory idf.py runs in)",
+        "path_rule": "The one thing people get wrong: idf.py runs in your-project; mcu_insight and sync_firmware.py run in tool-repo.",
+        "a_hint": "The project name is the one inside project(...) in CMakeLists.txt. If you are unsure, look first:",
+        "a_find": "Get-ChildItem <your-project>\\build\\*.map, <your-project>\\build\\*.bin",
+        "step3_extra_h": "If you also want to set EXTRA_COMPONENT_DIRS in the project CMakeLists.txt yourself, guard it:",
+        "step5_extra": "The first capture needs the serial library. Install it once, or run the capture with the ESP-IDF python, which already has it:",
+        "errors": "Something failed? Look it up here",
+        "errors_d": "These are the four a reader following this guide actually hits. Each one names the cause and a one line fix.",
+        "err_symptom": [
+            "CMakeLists.txt not found in project directory",
+            "Failed to resolve component 'mcu_telemetry'",
+            "reading a serial port needs pyserial",
+            "Directory specified in EXTRA_COMPONENT_DIRS doesn't exist",
+        ],
+        "err_fix": [
+            "You are not in the project directory. cd <your-project> first, then run idf.py.",
+            "Step one was skipped, so the component is not there. Run sync_firmware.py from <tool-repo>.",
+            "The serial library is missing. pip install pyserial, or capture with the ESP-IDF python.",
+            "Also a skipped step one. If you wrote that line yourself, guard it as shown above.",
+        ],
         "story_intro": "It does four things. That is the whole tool.",
         "s1": "copy one small component into your ESP-IDF project, so the firmware "
               "reports its own state every few seconds",
@@ -229,12 +263,12 @@ TEXT = {
         "story_outro": "No network, no account, no instruments.",
         "tail": "Once there is data: judge it, and get the report",
         "change": "You touch three places, and nothing else",
-        "change1": "My-Project/main/main.c - three lines, each one shown below",
-        "change2": "My-Project/main/CMakeLists.txt - one name added to REQUIRES",
-        "change3": "mcu-insight/budgets/my-board.json - a new file with your limits in it",
+        "change1": "your-project/main/main.c - three lines, each one shown below",
+        "change2": "your-project/main/CMakeLists.txt - one name added to REQUIRES",
+        "change3": "tool-repo/budgets/my-board.json - a new file with your limits in it",
         "steps": "B. Add three lines, and see what the board is really doing",
-        "here_tool": "run inside mcu-insight\\",
-        "here_fw": "run inside My-Project\\",
+        "here_tool": "run in tool-repo",
+        "here_fw": "run in your-project",
         "back": "what comes back",
         "step1": "Copy the component in",
         "step1_note": "One command. It copies the agent into your project and tells you "
@@ -321,6 +355,29 @@ TEXT = {
         "title": "MCU-Insight：先把 ESP32 工程测出来，再把它讲明白",
         "page_title": "MCU-Insight — 照着做就行",
         "story": "这东西是干什么的",
+        "paths": "动手前，先记住两个路径",
+        "paths_d": "下面每条命令都以 cd 开头，所以不管你当前在哪个目录都能直接粘贴。把这两个占位符换成你自己的路径：",
+        "path_tool": "工具仓库 = 你克隆 mcu-insight 的那个目录，里面有 docs\\ 和 mcu_insight\\",
+        "path_project": "你的工程 = 你的 ESP-IDF 工程目录，里面有 CMakeLists.txt（就是 idf.py 能跑的那一层）",
+        "path_rule": "最容易搞错的一条：idf.py 在你的工程里跑；mcu_insight 和 sync_firmware.py 在工具仓库里跑。",
+        "a_hint": "工程名就是 CMakeLists.txt 里 project(...) 括号里那个名字。不确定就先查一下：",
+        "a_find": "Get-ChildItem <你的工程>\\build\\*.map, <你的工程>\\build\\*.bin",
+        "step3_extra_h": "如果你还想自己在工程根 CMakeLists.txt 里写 EXTRA_COMPONENT_DIRS，必须加判断：",
+        "step5_extra": "第一次采集会需要串口库，先装一次（或用 ESP-IDF 自带的 python 跑采集，它自带）：",
+        "errors": "报错了？对着这张表找",
+        "errors_d": "这四条是照着这份指南做时最容易撞上的，每条都写明原因和一行修复。",
+        "err_symptom": [
+            "CMakeLists.txt not found in project directory",
+            "Failed to resolve component 'mcu_telemetry'",
+            "reading a serial port needs pyserial",
+            "Directory specified in EXTRA_COMPONENT_DIRS doesn't exist",
+        ],
+        "err_fix": [
+            "你不在工程目录里。先 cd <你的工程>，再跑 idf.py。",
+            "第一步没跑（组件没拷进去）。回到 <工具仓库> 跑 sync_firmware.py。",
+            "串口库没装。pip install pyserial，或改用 ESP-IDF 的 python 跑采集。",
+            "同样是没有先跑第一步；如果你自己写了那行，照上面加 if(EXISTS ...) 判断。",
+        ],
         "story_intro": "一共就四件事，没别的。",
         "s1": "把一个小组件拷进你的 ESP-IDF 工程，让固件每隔几秒报一次自己的状态",
         "s2": "跑一条命令，得到一份<b>给人看的 HTML 报告</b>：固件占多少 Flash 和 RAM、"
@@ -330,12 +387,12 @@ TEXT = {
         "story_outro": "不用联网、不用注册、不用仪器。",
         "tail": "有了数据之后：判预算、出报告、让 AI 讲",
         "change": "你只需要动三个地方，别的都不用改",
-        "change1": "My-Project/main/main.c —— 加 3 行，下面标了每一行放哪",
-        "change2": "My-Project/main/CMakeLists.txt —— 加一个名字 mcu_telemetry",
-        "change3": "mcu-insight/budgets/my-board.json —— 新建这个文件，写你的红线",
+        "change1": "你的工程/main/main.c —— 加 3 行，下面标了每一行放哪",
+        "change2": "你的工程/main/CMakeLists.txt —— 加一个名字 mcu_telemetry",
+        "change3": "工具仓库/budgets/my-board.json —— 新建这个文件，写你的红线",
         "steps": "B. 要你自己粘 3 行，看板子的真实数据",
-        "here_tool": "在 mcu-insight\\ 目录里运行",
-        "here_fw": "在 My-Project\\ 目录里运行",
+        "here_tool": "在工具仓库里运行",
+        "here_fw": "在你的工程里运行",
         "back": "跑完长这样",
         "step1": "第一步：把组件拷进你的工程",
         "step1_note": "就一条命令。它把 agent 拷进你的工程，并告诉你写了哪些文件。",
@@ -363,7 +420,7 @@ TEXT = {
         "step4": "第四步：编译烧写",
         "step4_note": "在固件工程里，就是平时的 ESP-IDF 命令。烧完之后，板子每 5 秒会吐一行 JSON。",
         "step5": "第五步：采集",
-        "step5_note": "在板子跑着你想测的那个场景时执行这条命令。遥测帧会存进一个 SQLite 文件，"
+        "step5_note": "在板子跑着你想测的那个场景时执行这条命令。它会边收边打印，每 5 秒一行；30 帧约 150 秒。中途 Ctrl+C 不会丢数据——每帧都已经写进库里了。遥测帧存进一个 SQLite 文件，' "
                       "后面所有命令都读文件，不用再插板子。",
         "step6": "第六步：写下你的红线",
         "step6_note": "在工具仓库里新建一个文件。这是唯一需要你自己写的东西："
@@ -415,10 +472,12 @@ TEXT = {
 LABELS = {
     "en": {"other": ("中文", "index.zh.html"), "repo": "Repository",
            "guide": "Full guide", "case": "Case study", "report": "Example report",
-           "nb_a": "What the build costs", "nb_m": "What the model costs"},
+           "nb_a": "What the build costs", "nb_m": "What the model costs",
+           "ph_tool": "tool-repo", "ph_project": "your-project", "ph_name": "your-project-name"},
     "zh": {"other": ("EN", "index.html"), "repo": "代码仓库",
            "guide": "完整指南", "case": "三轮诊断案例", "report": "报告示例",
-           "nb_a": "固件占多少", "nb_m": "模型占多少"},
+           "nb_a": "固件占多少", "nb_m": "模型占多少",
+           "ph_tool": "工具仓库", "ph_project": "你的工程", "ph_name": "工程名"},
 }
 
 
@@ -434,6 +493,10 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
     case_href = f"{blob}diagnosis-case-study.md" if repo else "diagnosis-case-study.md"
     snippet = C_MIN_ZH if lang == "zh" else C_MIN_EN
     optional = C_OPT_ZH if lang == "zh" else C_OPT_EN
+    TOOL = f"cd <{labels['ph_tool']}>"
+    FW = f"cd <{labels['ph_project']}>"
+    PROJECT = labels["ph_project"]
+    NAME = labels["ph_name"]
 
     def pre(text: str, cls: str = "out") -> str:
         return f'<pre class="{cls}">{html.escape(text)}</pre>' if text else ""
@@ -447,15 +510,15 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
                 + body + "</div>")
 
     component_tree = "\n".join(f"      {name}" for name in facts["component_files"])
-    before_tree = "My-Project\\\n  CMakeLists.txt\n  main\\main.c"
-    after_tree = ("My-Project\\\n  CMakeLists.txt\n"
+    before_tree = f"{PROJECT}\\\n  CMakeLists.txt\n  main\\main.c"
+    after_tree = (f"{PROJECT}\\\n  CMakeLists.txt\n"
                   f"  components\\            <- {c['created']}\n"
                   f"    mcu_telemetry\\       <- {c['created']}\n"
                   + component_tree + "\n  main\\main.c")
 
     route_b = "".join([
         block("1", c["step1"], c["here_tool"], c["step1_note"],
-              pre("python tools/sync_firmware.py ..\\My-Project", "run")
+              pre(f"{TOOL}\npython tools/sync_firmware.py <{PROJECT}>", "run")
               + '<div class="grid" style="margin-top:12px">'
               + f'<div><p class="note">{c["before"]}</p>' + pre(before_tree) + "</div>"
               + f'<div><p class="note">{c["after"]}</p>' + pre(after_tree) + "</div>"
@@ -467,27 +530,30 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
               + "".join(f"<li>{line}</li>" for line in c["s2_auto"]) + "</ul>"
               + f'<p class="note">{c["s2_cfg_h"]}</p>' + pre(c["s2_cfg"], "run")
               + f'<p class="note">{c["s2_opt_h"]}</p>' + pre(optional, "run")),
-        block("3", c["step3"], c["here_fw"], c["step3_note"], pre(CMAKE_SNIPPET, "run")),
+        block("3", c["step3"], c["here_fw"], c["step3_note"],
+              pre(CMAKE_SNIPPET, "run")
+              + f'<p class="note">{c["step3_extra_h"]}</p>' + pre(CMAKE_GUARDED, "run")),
         block("4", c["step4"], c["here_fw"], c["step4_note"],
-              pre("idf.py -p COM19 flash monitor", "run")),
+              pre(f"{FW}\nidf.py -p COM19 flash monitor", "run")),
         block("5", c["step5"], c["here_tool"], c["step5_note"],
-              pre("python -m mcu_insight collect --db captures/board.db "
-                  "--source serial:COM19", "run")
+              f'<p class="note">{c["step5_extra"]}</p>'
+              + pre(f"{TOOL}\\npython -m mcu_insight collect --db captures/board.db "
+                    "--source serial:COM19 --limit 30", "run")
               + f'<p class="note">{c["back"]}</p>' + pre(facts["summary"])),
     ])
 
     tail = "".join([
         block("6", c["step6"], c["here_tool"], c["step6_note"], pre(JSON_EN, "run")),
         block("7", c["step7"], c["here_tool"], c["step7_note"],
-              pre("python -m mcu_insight check --db captures/board.db "
+              pre(f"{TOOL}\npython -m mcu_insight check --db captures/board.db "
                   "--config budgets/my-board.json", "run")
               + f'<p class="note">{c["back"]}</p>' + pre(facts["check"])
-              + pre("python -m mcu_insight report --db captures/board.db "
+              + pre(f"{TOOL}\npython -m mcu_insight report --db captures/board.db "
                     "--config budgets/my-board.json --out report.html", "run")
               + f'<p class="note">{c["step7_link"]} '
               + '<a href="report-demo.html">docs/report-demo.html</a></p>'),
         block("8", c["step8"], c["here_tool"], c["step8_note"],
-              pre("python -m mcu_insight diagnose --db captures/board.db "
+              pre(f"{TOOL}\npython -m mcu_insight diagnose --db captures/board.db "
                   "--config budgets/my-board.json --out prompt.txt", "run")
               + '<div class="grid" style="margin-top:12px">'
               + f'<div><p class="note">{c["diag_e"]}</p>' + pre(facts["evidence"]) + "</div>"
@@ -499,7 +565,7 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
               + f'<p class="note">{c["s8_lang_d"]}</p>'
               + f'<p class="note">{c["s8_what_h"]}</p><ul>'
               + "".join(f"<li>{line}</li>" for line in c["s8_what"]) + "</ul>"
-              + pre("python -m mcu_insight audit --pack prompt.txt --answer answer.md", "run")
+              + pre(f"{TOOL}\npython -m mcu_insight audit --pack prompt.txt --answer answer.md", "run")
               + f'<p class="note">{c["s8_audit"]}</p>'),
     ])
 
@@ -521,19 +587,32 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         f"<section><h2>{c['story']}</h2><p>{c['story_intro']}</p><ul>",
         "".join(f"<li>{c[f's{i}']}</li>" for i in (1, 2, 3, 4)),
         f"</ul><p class=\"note\">{c['story_outro']}</p></section>",
+        f"<section><h2>{c['paths']}</h2><p class=\"note\">{c['paths_d']}</p><ul>",
+        f"<li>{html.escape(c['path_tool'])}</li>",
+        f"<li>{html.escape(c['path_project'])}</li>",
+        "</ul>",
+        f'<p class="note"><b>{html.escape(c["path_rule"])}</b></p></section>',
         f"<section><h2>{c['change']}</h2><ul>",
         "".join(f"<li>{c[f'change{i}']}</li>" for i in (1, 2, 3)),
         "</ul></section>",
         f"<section><h2>{c['nb']}</h2><p class=\"note\">{c['nb_d']}</p>",
         block("", labels["nb_a"], c["here_tool"], "",
-              pre("python -m mcu_insight analyze build/my_app.map "
-                  "--bin build/my_app.bin --partition 1500K", "run")
+              pre(f"{TOOL}\npython -m mcu_insight analyze <{PROJECT}>\\build\\<{NAME}>.map "
+                  f"--bin <{PROJECT}>\\build\\<{NAME}>.bin --partition 1500K", "run")
+              + f'<p class="note">{c["a_hint"]}</p>' + pre(c["a_find"], "run")
               + f'<p class="note">{c["back"]}</p>' + pre(facts["analyze"])),
         block("", labels["nb_m"], c["here_tool"], "",
-              pre("python -m mcu_insight model build/model.tflite", "run")
+              pre(f"{TOOL}\npython -m mcu_insight model <{PROJECT}>\\build\\model.tflite", "run")
               + f'<p class="note">{c["back"]}</p>' + pre(facts["model"])),
         "</section>",
         f"<section><h2>{c['steps']}</h2><p>{c['b_intro']}</p>{route_b}</section>",
+        f"<section><h2>{c['errors']}</h2><p class=\"note\">{c['errors_d']}</p>",
+        '<table class=errors>',
+        "".join(
+            f'<tr><td>{html.escape(symptom)}</td><td>{html.escape(fix)}</td></tr>'
+            for symptom, fix in zip(c["err_symptom"], c["err_fix"])
+        ),
+        "</table></section>",
         f"<section><h2>{c['tail']}</h2>{tail}</section>",
         f"<section><h2>{c['value_h']}</h2><ul>",
         "".join(f"<li>{line}</li>" for line in c["value"]),

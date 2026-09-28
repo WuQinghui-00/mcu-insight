@@ -66,11 +66,23 @@ def collect(
     store: Store,
     limit: int | None = None,
     verbose: bool = False,
+    quiet: bool = False,
 ) -> CollectStats:
-    """Read ``source`` and store every frame found in it."""
+    """Read ``source`` and store every frame found in it.
+
+    Progress goes to stdout unless ``quiet``. A capture that says nothing for
+    two minutes cannot be told apart from a hang, and what a reader does with a
+    command that looks hung is kill it. Every frame is committed as it arrives,
+    so stopping early keeps whatever came in.
+    """
     stats = CollectStats()
     if limit is not None and limit <= 0:
         return stats
+
+    if not quiet:
+        goal = f", stopping after {limit} frame(s)" if limit is not None else ""
+        print(f"listening on {source} -- storing into {store.path}{goal}", flush=True)
+        print("Ctrl+C stops early; frames already received are on disk", flush=True)
 
     for line in iter_lines(source):
         if not line.strip():
@@ -92,8 +104,10 @@ def collect(
         store.add(frame)
         stats.frames += 1
         stats.last_device = frame.device
-        if verbose:
-            print(f"{frame.device} #{frame.seq} uptime={frame.uptime_ms:.0f} ms")
+        if not quiet:
+            seen = f"{stats.frames}/{limit}" if limit is not None else str(stats.frames)
+            print(f"  {seen:>8}  {frame.device} #{frame.seq} "
+                  f"uptime={frame.uptime_ms:,.0f} ms", flush=True)
         if limit is not None and stats.frames >= limit:
             break
     return stats

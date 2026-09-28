@@ -29,6 +29,7 @@ pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13p
       margin: 8px 0 0; white-space: pre; }
 pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
 .note { color: #6b7280; font-size: 13.5px; margin: 8px 0 0; }
+table.errors td:first-child { white-space: normal; }
 ul { margin: 6px 0 0; padding-left: 20px; }
 li { margin-bottom: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -40,19 +41,25 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <div class=lang><a href="index.zh.html">中文</a></div>
 <h1>MCU-Insight</h1>
 <nav>
-<a href="https://github.com/WuQinghui-00/mcu-insight">Repository</a>
-<a href="https://github.com/WuQinghui-00/mcu-insight/blob/main/docs/using-it.md">Full guide</a>
-<a href="https://github.com/WuQinghui-00/mcu-insight/blob/main/docs/diagnosis-case-study.md">Case study</a>
+
+<a href="using-it.md">Full guide</a>
+<a href="diagnosis-case-study.md">Case study</a>
 <a href="report-demo.html">Example report</a>
 </nav></header>
 <section><h2>What this is</h2><p>It does four things. That is the whole tool.</p><ul>
 <li>copy one small component into your ESP-IDF project, so the firmware reports its own state every few seconds</li><li>run one command and get an <b>HTML report a human can read</b>: how much flash and RAM the build takes, how much stack each task has left, the smallest free heap, how slow inference gets</li><li>when something is wrong, get an <b>evidence pack</b>: every known fact, numbered, ready to paste into any AI</li><li>check the AI's answer back against that pack, which catches a citation that does not exist</li>
 </ul><p class="note">No network, no account, no instruments.</p></section>
+<section><h2>Two paths to write down first</h2><p class="note">Every command below starts with cd, so it works from wherever your shell happens to be. Replace the two placeholders with your own paths:</p><ul>
+<li>tool-repo = the directory you cloned mcu-insight into; it contains docs\ and mcu_insight\</li>
+<li>your-project = your ESP-IDF project directory, the one with CMakeLists.txt in it (the directory idf.py runs in)</li>
+</ul>
+<p class="note"><b>The one thing people get wrong: idf.py runs in your-project; mcu_insight and sync_firmware.py run in tool-repo.</b></p></section>
 <section><h2>You touch three places, and nothing else</h2><ul>
-<li>My-Project/main/main.c - three lines, each one shown below</li><li>My-Project/main/CMakeLists.txt - one name added to REQUIRES</li><li>mcu-insight/budgets/my-board.json - a new file with your limits in it</li>
+<li>your-project/main/main.c - three lines, each one shown below</li><li>your-project/main/CMakeLists.txt - one name added to REQUIRES</li><li>tool-repo/budgets/my-board.json - a new file with your limits in it</li>
 </ul></section>
 <section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
-<div class=step><div class="where">run inside mcu-insight\</div><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
+<div class=step><div class="where">run in tool-repo</div><h3>What the build costs</h3><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight analyze &lt;your-project&gt;\build\&lt;your-project-name&gt;.map --bin &lt;your-project&gt;\build\&lt;your-project-name&gt;.bin --partition 1500K</pre><p class="note">The project name is the one inside project(...) in CMakeLists.txt. If you are unsure, look first:</p><pre class="run">Get-ChildItem &lt;your-project&gt;\build\*.map, &lt;your-project&gt;\build\*.bin</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
 map       : build\signal_processing_system.map
 
 Flash image
@@ -63,7 +70,8 @@ Flash image
   used         : 1,065,728 B (69.4%)  [#################.......]
   free         : 470,272 B (459.2 KiB, 30.6%)
 ...</pre></div>
-<div class=step><div class="where">run inside mcu-insight\</div><h3>What the model costs</h3><pre class="run">python -m mcu_insight model build/model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
+<div class=step><div class="where">run in tool-repo</div><h3>What the model costs</h3><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight model &lt;your-project&gt;\build\model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
 model     : training\out\waveform_model_real.tflite
 size      : 6,544 B (6.4 KiB)
 schema    : version 3   subgraphs 1   operators 4   tensors 11
@@ -73,16 +81,17 @@ Memory
   weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
 ...</pre></div>
 </section>
-<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run inside mcu-insight\</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">My-Project\
+<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run in tool-repo</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">cd &lt;tool-repo&gt;
+python tools/sync_firmware.py &lt;your-project&gt;</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">your-project\
   CMakeLists.txt
-  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">My-Project\
+  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">your-project\
   CMakeLists.txt
   components\            &lt;- created by the command
     mcu_telemetry\       &lt;- created by the command
       CMakeLists.txt
       include/mcu_telemetry.h
       mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run inside My-Project\</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run in your-project</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
 #include &quot;mcu_telemetry.h&quot;
 
 /* 2. outside app_main, anywhere in the file */
@@ -109,11 +118,20 @@ mcu_telemetry_register_task(&quot;control&quot;, 4096);
 mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
 
 /* optional: a latency distribution for any call, one line at the call site */
-mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run inside My-Project\</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
+mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run in your-project</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS &quot;main.c&quot;
     INCLUDE_DIRS &quot;.&quot;
-    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre></div><div class=step><div class="num">4</div><div class="where">run inside My-Project\</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run inside mcu-insight\</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note">If you also want to set EXTRA_COMPONENT_DIRS in the project CMakeLists.txt yourself, guard it:</p><pre class="run"># My-Project/CMakeLists.txt
+cmake_minimum_required(VERSION 3.16)
+
+if(EXISTS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
+    set(EXTRA_COMPONENT_DIRS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
+endif()
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(my_app)</pre></div><div class=step><div class="num">4</div><div class="where">run in your-project</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">cd &lt;your-project&gt;
+idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run in tool-repo</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><p class="note">The first capture needs the serial library. Install it once, or run the capture with the ESP-IDF python, which already has it:</p><pre class="run">cd &lt;tool-repo&gt;\npython -m mcu_insight collect --db captures/board.db --source serial:COM19 --limit 30</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices
@@ -123,7 +141,11 @@ Metric trends (esp32-signal-processor, 21 frames)
   uptime_ms                              13,320 -&gt;    103,370   change +90,050
   custom.inference_us                     1,320 -&gt;        954   change -366
 ...</pre></div></section>
-<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run inside mcu-insight\</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
+<section><h2>Something failed? Look it up here</h2><p class="note">These are the four a reader following this guide actually hits. Each one names the cause and a one line fix.</p>
+<table class=errors>
+<tr><td>CMakeLists.txt not found in project directory</td><td>You are not in the project directory. cd &lt;your-project&gt; first, then run idf.py.</td></tr><tr><td>Failed to resolve component &#x27;mcu_telemetry&#x27;</td><td>Step one was skipped, so the component is not there. Run sync_firmware.py from &lt;tool-repo&gt;.</td></tr><tr><td>reading a serial port needs pyserial</td><td>The serial library is missing. pip install pyserial, or capture with the ESP-IDF python.</td></tr><tr><td>Directory specified in EXTRA_COMPONENT_DIRS doesn&#x27;t exist</td><td>Also a skipped step one. If you wrote that line yourself, guard it as shown above.</td></tr>
+</table></section>
+<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run in tool-repo</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
   &quot;rules&quot;: [
     {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
     {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
@@ -131,7 +153,8 @@ Metric trends (esp32-signal-processor, 21 frames)
     {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
   ],
   &quot;baseline&quot;: {&quot;path&quot;: &quot;my-board-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
-}</pre></div><div class=step><div class="num">7</div><div class="where">run inside mcu-insight\</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
+}</pre></div><div class=step><div class="num">7</div><div class="where">run in tool-repo</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
 database  : captures\fault-heap.db
 devices   : esp32-signal-processor
 rules     : 7   metrics matched: 21
@@ -154,7 +177,9 @@ Changed since baseline (budgets\signal_baseline.json)
 
 3 metric(s) not present in the baseline
 
-RESULT: FAIL</pre><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run inside mcu-insight\</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
+RESULT: FAIL</pre><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run in tool-repo</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
 [E1] device esp32-signal-processor (firmware dev)
 [E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
 [E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
@@ -171,7 +196,8 @@ unknown id  : none
 unknown name: none
 uncited line: 0 (a warning, not an error)
 
-RESULT: OK</pre></div></div><p class="note">To have it answer in Chinese, add one flag:</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.</p><p class="note">The diagnosis that comes back is always these four parts:</p><ul><li>Root cause: the single most likely one, a confidence level, and the evidence ids behind it</li><li>Alternatives: what else could produce this, and which observation rules each one out</li><li>Fix: the smallest change that addresses the root cause</li><li>Verification: which command to run, which metric should move, and roughly how much</li></ul><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.</p></div></section>
+RESULT: OK</pre></div></div><p class="note">To have it answer in Chinese, add one flag:</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.</p><p class="note">The diagnosis that comes back is always these four parts:</p><ul><li>Root cause: the single most likely one, a confidence level, and the evidence ids behind it</li><li>Alternatives: what else could produce this, and which observation rules each one out</li><li>Fix: the smallest change that addresses the root cause</li><li>Verification: which command to run, which metric should move, and roughly how much</li></ul><pre class="run">cd &lt;tool-repo&gt;
+python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.</p></div></section>
 <section><h2>So what is it worth</h2><ul>
 <li><b>It sees what an AI cannot.</b> A model can read your code. It cannot read what is on your board: whether a stack has 512 bytes left or 256, whether the smallest free heap was 24 KB or 4 KB, whether inference P99 is 30 ms or 55 ms. Those exist only if something measures them.</li><li><b>It does not let the AI make things up.</b> Every fact is numbered, the answer has to cite it, and the audit fails an answer that cites an id which does not exist. Without that layer, a diagnosis only sounds reasonable.</li><li><b>It can say why this change made it worse.</b> With a baseline to compare against -- revision, capture length, and the slope of every metric -- it can tell a real regression from a capture that was simply shorter.</li>
 </ul><p class="note">In one line: rules and statistics detect, an AI explains. The tool brings the evidence, the AI argues from it, and the citations between the two are checked by machine.</p></section>

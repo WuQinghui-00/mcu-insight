@@ -6,6 +6,7 @@ what it builds out of whatever those runs return.
 
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
 import unittest
@@ -86,9 +87,39 @@ class GuidePageTest(unittest.TestCase):
 
     def test_every_step_says_which_directory_it_belongs_in(self):
         page = render("en", FACTS)
-        self.assertGreaterEqual(page.count('class="where"'), 7, "each command names its directory")
-        self.assertIn("run inside mcu-insight", page)
-        self.assertIn("run inside My-Project", page)
+        self.assertGreaterEqual(page.count('class="where"'), 7, "each step names its directory")
+        self.assertIn("run in tool-repo", page)
+        self.assertIn("run in your-project", page)
+
+    def test_the_page_names_the_two_paths_up_front(self):
+        page = render("en", FACTS)
+        self.assertIn("tool-repo =", page)
+        self.assertIn("your-project =", page)
+        self.assertIn("idf.py runs in your-project", page)
+
+    def test_every_command_block_starts_with_a_cd(self):
+        # The reader's shell state is not knowable, so each command carries its
+        # own cd. Snippets (C, CMake, JSON, menuconfig) do not.
+        page = render("en", FACTS)
+        commands = re.findall(r'<pre class="run">(.*?)</pre>', page, re.S)
+        with_cd = [block for block in commands if block.startswith("cd &lt;")]
+        self.assertGreaterEqual(len(with_cd), 8, f"only {len(with_cd)} commands carried a cd")
+
+    def test_the_error_table_covers_the_traps(self):
+        page = render("en", FACTS)
+        for symptom in ("CMakeLists.txt not found in project directory",
+                        "Failed to resolve component",
+                        "needs pyserial",
+                        "EXTRA_COMPONENT_DIRS"):
+            self.assertIn(symptom, page, symptom)
+
+    def test_step_three_shows_the_guarded_cmake(self):
+        page = render("en", FACTS)
+        self.assertIn("if(EXISTS", page)
+        self.assertIn("EXTRA_COMPONENT_DIRS", page)
+
+    def test_step_five_mentions_the_serial_library(self):
+        self.assertIn("pyserial", render("en", FACTS))
 
     def test_the_three_lines_are_marked_with_where_they_go(self):
         page = render("en", FACTS)

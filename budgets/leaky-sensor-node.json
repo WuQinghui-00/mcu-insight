@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {"metric": "heap.min", "min": 100000, "stat": "min"},
+    {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
+    {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},
+    {"metric": "custom.idle*_pct", "min": 40, "stat": "min"}
+  ],
+  "metrics": {
+    "custom.sample_raw": {"description": "the fake sensor reading, changing every sample"},
+    "custom.payload_first_byte": {"description": "first byte of the buffer allocated for this sample; it never goes back"}
+  }
+}
