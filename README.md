@@ -6,6 +6,28 @@
 
 Resource observability for embedded firmware (ESP-IDF / FreeRTOS).
 
+
+## What this is for
+
+Writing embedded code with an AI is fast. Nobody measures what that code costs on
+a real board. A build that links only proves it fits -- not how much heap is left
+after five minutes, or how many bytes of stack separate the deepest call from the
+end of the stack. Those numbers exist only if something measures them, and a
+general model can read your code but not your board.
+
+So this tool puts three things together: the **build artefacts** (.map, .bin,
+.tflite), the **device's own reports** every five seconds (per-task stack
+high-water marks, the smallest free heap, per-core idle share, latency
+percentiles, sleep residency), and the **limits the project writes down**. It
+returns three things: a self-contained HTML report for a human, an exit code for
+CI (PASS / FAIL / INCOMPLETE), and a numbered evidence pack for a model.
+
+The diagnosis half rests on one rule: **a claim has to be checkable**. Every fact
+in the pack is numbered, the prompt demands a citation for each claim and caps
+the answer at 400 words, and `audit` checks the answer when it comes back -- a
+cited id that does not exist fails. That is how it answers three questions: can
+this code run, is it worse than the last revision, and where.
+
 **The guide:** [中文](https://wuqinghui-00.github.io/mcu-insight/index.zh.html) · [English](https://wuqinghui-00.github.io/mcu-insight/)
 
 The tool answers questions a code review cannot answer:
