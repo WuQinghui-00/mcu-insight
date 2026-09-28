@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh"><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>MCU-Insight — 怎么用在新工程上</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0 24px 64px; background: #f6f7f9; color: #1c2024;
+       font: 15px/1.6 -apple-system, Segoe UI, Roboto, sans-serif; }
+.wrap { max-width: 980px; margin: 0 auto; }
+header { padding: 40px 0 12px; }
+h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
+     color: #6b7280; margin: 0 0 14px; }
+h3 { font-size: 15px; margin: 0 0 4px; }
+p { margin: 0 0 10px; }
+.lede { font-size: 17px; color: #4b5563; margin: 0 0 18px; max-width: 46em; }
+a { color: #2563eb; }
+nav a { display: inline-block; margin-right: 14px; font-size: 14px; }
+.lang { float: right; font-size: 14px; }
+.lang a { font-weight: 600; }
+section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+          padding: 20px 22px; margin-top: 18px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.card { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; }
+.card .step { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 8px; }
+pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13px;
+      overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+      margin: 8px 0 0; white-space: pre; }
+pre.run { background: #1e293b; }
+pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
+code { font: 12.5px/1.5 ui-monospace, monospace; background: #f1f3f5;
+       padding: 1px 5px; border-radius: 4px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+td { padding: 7px 10px 7px 0; border-top: 1px solid #f1f3f5; vertical-align: top; }
+td:first-child { white-space: nowrap; color: #6b7280; }
+.note { color: #6b7280; font-size: 13px; }
+.ok { color: #067647; font-weight: 600; }
+.bad { color: #b42318; font-weight: 600; }
+.warn { color: #b54708; font-weight: 600; }
+footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
+</style></head><body><div class=wrap>
+<header>
+<div class=lang><a href="index.html">EN</a></div>
+<h1>MCU-Insight</h1>
+<p class="lede">ESP-IDF 固件占多少资源、设备运行时到底在干什么、以及最近这次改动有没有让它变差。</p>
+<nav><a href="using-it.md">完整使用指南</a><a href="diagnosis-case-study.md">三轮诊断案例</a><a href="report-demo.html">报告示例</a></nav></header>
+<section><h2>它回答什么</h2><div class=grid>
+<div class="card"><h3>这个构建占多少</h3><p class="note">Flash、静态 DRAM、IRAM 和 app 分区占用，按组件拆分，从链接脚本映射文件和固件镜像里读，不需要板子。</p></div>
+<div class="card"><h3>设备实际在干什么</h3><p class="note">每个任务的栈高水位、堆最小空闲和最大可分配块、每核空闲占比、延迟分位数、睡眠占比——固件报什么就能看什么。</p></div>
+<div class="card"><h3>这次改动有没有让它变差</h3><p class="note">可以约束数值、也可以约束斜率的预算规则，与基线快照的对比，以及需要解释时给模型用的证据包。</p></div>
+</div></section>
+<section><h2>新工程上的四步</h2><div class=grid><div class="card"><div class="step">1</div><h3>把设备端 agent 拷进去</h3><p class="note">就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，所以这条命令把它拷过去并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre></div><div class="card"><div class="step">2</div><h3>采集</h3><p class="note">遥测帧追加进一个 SQLite 文件，之后所有命令读文件而不是读板子。同一个串口上的日志行会被自动忽略。</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - telemetry summary
+database  : captures\fault-off.db
+
+Devices
+  esp32-signal-processor       21 frames   fw dev        100.1 s of uptime
+
+Metric trends (esp32-signal-processor, 21 frames)
+  uptime_ms                              13,320 -&gt;    103,370   change +90,050
+  custom.inference_us                     1,320 -&gt;        954   change -366
+  task.telemetry.stack_free_min           2,408 -&gt;      2,184   change -224
+  custom.infer_min_us                     1,165 -&gt;        946   change -219
+...</pre></div><div class="card"><div class="step">3</div><h3>判定</h3><p class="note">退出码 0 表示通过，1 表示不通过或规则无法判定，所以可以直接卡 CI。</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - resource checks
+database  : captures\fault-heap.db
+devices   : esp32-signal-processor
+rules     : 7   metrics matched: 21
+
+Violations (2)
+  ! esp32-signal-processor heap.free: falls at -956.9 per second, slope &gt;= -64/s over &gt;= 60 s of steady state
+  ! esp32-signal-processor heap.min: 50168 is below 100000
+
+Changed since baseline (budgets\signal_baseline.json)
+  heap.min                              147,956 -&gt;     50,168   -66.1%
+  heap.free                             148,168 -&gt;     50,372   -66.0%
+  custom.infer_samples                      114 -&gt;         49   -57.0%
+  uptime_ms                             248,337 -&gt;    108,420   -56.3%
+  heap.largest                          110,592 -&gt;     49,152   -55.6%
+  custom.infer_max_us                     2,272 -&gt;      1,348   -40.7%
+  task.uart_cmd.stack_free_min            2,892 -&gt;      2,068   -28.5%
+  custom.inference_us                     1,086 -&gt;      1,335   +22.9%
+  custom.model_class                          0 -&gt;          2   +2
+  custom.model_expected                       0 -&gt;          2   +2
+
+3 metric(s) not present in the baseline
+
+RESULT: FAIL
+
+同样的命令在健康的采集上会打印 RESULT: PASS 并以 0 退出。</pre></div><div class="card"><div class="step">4</div><h3>看结果</h3><p class="note">一个自包含 HTML 文件：数据内联、图表是手写 SVG，没有服务器、没有 CDN、没有脚本。</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div></section>
+<section><h2>你自己的工程要加什么</h2><p class="note">五行 C 代码，加一个 JSON 文件——它说明预算是什么、每个指标是什么意思。</p>
+<div class="grid">
+<div><pre class="run">#include &quot;mcu_telemetry.h&quot;
+
+static const mcu_telemetry_config_t telemetry = {
+    .device = &quot;my-board&quot;,
+    .firmware = FW_REVISION,
+    .report_period_ms = 5000,
+};
+
+ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
+mcu_telemetry_register_task(&quot;control&quot;, TASK_STACK_CONTROL);
+mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
+mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div>
+<div><pre class="run">{
+  &quot;rules&quot;: [
+    {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
+    {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
+    {&quot;metric&quot;: &quot;task.*.stack_free_min&quot;, &quot;min&quot;: 256, &quot;stat&quot;: &quot;min&quot;},
+    {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
+  ],
+  &quot;baseline&quot;: {&quot;path&quot;: &quot;my-project-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
+}</pre></div>
+</div></section>
+<section><h2>一次诊断长什么样</h2><p class="note">工具不猜。它把所有已知事实整理成带编号的证据包，你交给任意模型，然后它核对拿回来的答案。</p>
+<div class="grid">
+<div class="card"><h3>证据包（diagnose）</h3><pre class="out">MCU-INSIGHT EVIDENCE PACK
+[E1] device esp32-signal-processor (firmware dev)
+[E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
+[E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
+[E4] budget file budgets/signal.json
+[E5] baseline capture: not recorded -- the file predates the capture shape. The one duration it carries is uptime_ms 248,337, the point the device had reached when the snapshot was taken
+[E6] note the baseline was taken after 248 s of uptime and this capture holds 95 s of steady state. A level delta on a high-water mark carries part of that difference, so the rates are the ones to compare; a baseline saved from now on records its own span and settles it
+[E7] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
+[E8] VIOLATION heap.free: falls at -956.9 per second, slope &gt;= -64/s over &gt;= 60 s of steady state
+...</pre></div>
+<div class="card"><h3>模型给出的答案</h3><pre class="out">The deliberately injected leak in main/main.c: s_leak_sink = malloc(2048) executed once per main
+loop iteration while s_fault == FAULT_HEAP [E98]. The pack&#x27;s own provenance states the fault is
+injected on purpose [E3], the capture is taken by tools/fault_matrix.py --port COM19 [E4], and the
+fault is armed at run time over the console, where FAULT heap means &quot;leak 2 KB per loop&quot; [E98].</pre></div>
+<div class="card"><h3>拿回证据包里核对（audit）</h3><pre class="out">MCU-INSIGHT ANSWER AUDIT
+citations   : 50 distinct of 126 in the pack (99 available)
+unknown id  : none
+unknown name: none
+uncited line: 0 (a warning, not an error)
+
+RESULT: OK</pre></div>
+</div></section>
+<section><h2>没有板子也能用</h2><p class="note">其中两条命令只读构建产物，所以在笔记本上和 CI 里都能跑。</p>
+<div class="grid">
+<div class="card"><h3>这个构建占多少</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - static resource report
+map       : D:\ESP32-FAE\ESP32-Signal-Processing-System-github\build\signal_processing_system.map
+
+Flash image
+  estimated   :  1,065,624 B  (1.02 MiB)
+  actual .bin :  1,065,728 B  (1.02 MiB)  delta +104 B
+
+  app partition: 1,536,000 B (1.46 MiB)
+  used         : 1,065,728 B (69.4%)  [#################.......]
+  free         : 470,272 B (459.2 KiB, 30.6%)
+
+...</pre></div>
+<div class="card"><h3>TinyML 模型占多少</h3><pre class="run">python -m mcu_insight model build/model.tflite</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - TensorFlow Lite model report
+model     : training\out\waveform_model_real.tflite
+size      : 6,544 B (6.4 KiB)
+schema    : version 3   subgraphs 1   operators 4   tensors 11
+description: MLIR Converted.
+
+Memory
+  weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
+  tensor arena peak :        96 B  (worst case if nothing is reused: 118 B)
+...</pre></div>
+</div></section>
+<section><h2>HTML 报告里有什么</h2><p class="note">五个区块，每一块都是从这次采集生成的。</p>
+<table><tr><td>Checks</td><td>总判决、每一条规则、以及任何未能判定的规则</td></tr><tr><td>Baseline changes</td><td>相对基线快照的变化，只在方向明确会变差时才着色</td></tr><tr><td>Metric trends</td><td>变化最大的指标，一卡一个，重启点标出来</td></tr><tr><td>Build resources</td><td>Flash、静态 DRAM、IRAM、分区占用、占用量最大的组件</td></tr><tr><td>Fault injection matrix</td><td>给了故障目录时，逐个说明检查有没有抓到注入的故障</td></tr></table>
+<p class="note" style="margin-top:12px"><a href="report-demo.html">报告示例</a></p></section>
+<footer>本页的每段输出都是拿本仓库里已提交的采集和构建产物真跑出来的，不是手写的。重新生成：<code>python tools/build_guide.py</code>。</footer>
+</div></body></html>

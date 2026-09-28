@@ -31,6 +31,13 @@ The host side needs no dependencies, no account and no network. Starting from a
 new ESP-IDF project, [`docs/using-it.md`](docs/using-it.md) walks from
 installing the device agent to reading the HTML report.
 
+There is also a one-page guide in two languages, built from real runs of the
+tool. Open [`docs/index.html`](docs/index.html) (English) or
+[`docs/index.zh.html`](docs/index.zh.html) (中文) by double-clicking the file.
+GitHub shows HTML as source, so to read it as a page either open it locally or
+turn on Pages: **Settings -> Pages -> Deploy from a branch -> `main` / `docs`**.
+It then lives at `https://<user>.github.io/<repo>/`.
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\python -m pip install -e . --no-build-isolation   # optional: the `mcu-insight` command
