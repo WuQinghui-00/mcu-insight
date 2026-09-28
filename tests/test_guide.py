@@ -16,14 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.build_guide import TEXT, paragraph_containing, render, take  # noqa: E402
 
 FACTS = {
-    "summary": "MCU-Insight - telemetry summary\nDevices\n  board 5 frames",
-    "check_fail": "Violations (1)\n  ! heap.free: falls at -956.9 per second\nRESULT: FAIL",
+    "component_files": ["CMakeLists.txt", "include/mcu_telemetry.h", "mcu_telemetry.c"],
     "analyze": "Flash image\n  actual .bin : 1,065,728 B",
     "model": "Memory\n  tensor arena peak : 96 B",
+    "summary": "MCU-Insight - telemetry summary\nDevices\n  board 5 frames",
+    "check": "Violations (1)\n  ! heap.free: falls at -956.9 per second\nRESULT: FAIL",
     "evidence": "[E1] device board\n[E2] capture 21 frames",
     "answer": "The leak is s_leak_sink = malloc(2048) once per loop [E98].",
     "audit": "citations   : 50 distinct of 126 in the pack\nRESULT: OK",
-    "component_files": ["CMakeLists.txt", "include/mcu_telemetry.h", "mcu_telemetry.c"],
 }
 
 
@@ -39,8 +39,14 @@ class GuidePageTest(unittest.TestCase):
 
     def test_the_page_carries_the_outputs_it_was_given(self):
         page = render("en", FACTS)
-        for key in ("summary", "check_fail", "analyze", "model", "evidence", "audit"):
+        for key in ("analyze", "model", "summary", "check", "evidence", "answer", "audit"):
             self.assertIn(FACTS[key].splitlines()[0], page, key)
+
+    def test_there_are_two_routes_and_they_are_labelled(self):
+        page = render("en", FACTS)
+        self.assertIn("A. Change nothing", page)
+        self.assertIn("B. Add five things", page)
+        self.assertIn("You touch three places", page)
 
     def test_the_page_needs_no_javascript_and_no_network(self):
         page = render("en", FACTS)
@@ -63,25 +69,33 @@ class GuidePageTest(unittest.TestCase):
         self.assertIn("&lt;script&gt;", page)
 
     def test_the_copied_file_list_comes_from_the_component(self):
-        # The list of files step 1 writes is read from the component itself,
-        # so a new file in the agent shows up on the page without editing it.
+        # The list of files step 1 writes is read from the component itself, so
+        # a new file in the agent shows up on the page without editing it.
         page = render("en", {**FACTS, "component_files": ["CMakeLists.txt", "mcu_telemetry.c"]})
         self.assertIn("CMakeLists.txt", page)
         self.assertIn("mcu_telemetry.c", page)
-        self.assertIn("step 1 writes this directory", page)
-
-    def test_step_one_shows_what_the_command_creates_and_the_cmake_line(self):
-        page = render("en", FACTS)
         self.assertIn("created by the command", page)
-        self.assertIn("components\\", page)
-        self.assertIn("REQUIRES driver nvs_flash freertos mcu_telemetry", page)
-        self.assertIn("does not look like an ESP-IDF project", page)
+
     def test_every_step_says_which_directory_it_belongs_in(self):
         page = render("en", FACTS)
-        self.assertEqual(4, page.count('class="where"'), "one badge per step")
+        self.assertGreaterEqual(page.count('class="where"'), 7, "each command names its directory")
+        self.assertIn("run inside mcu-insight", page)
+        self.assertIn("run inside My-Project", page)
+
+    def test_the_five_placements_in_main_c_are_marked(self):
+        page = render("en", FACTS)
+        for marker in ("1. at the top", "2. outside app_main", "3. after the hardware is up",
+                       "4. right after each task", "5. wherever a number"):
+            self.assertIn(marker, page)
+
+    def test_the_chinese_page_marks_the_placements_in_chinese(self):
+        page = render("zh", FACTS)
+        self.assertIn("第 1 处", page)
+        self.assertIn("第 5 处", page)
 
     def test_the_page_links_to_a_report_you_can_open(self):
         self.assertIn('href="report-demo.html"', render("en", FACTS))
+
     def test_take_says_when_it_dropped_lines(self):
         self.assertEqual("a\nb\n...", take("a\nb\nc\nd", 2))
         self.assertEqual("a\nb", take("a\nb", 5))

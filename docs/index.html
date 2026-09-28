@@ -1,72 +1,116 @@
 <!doctype html>
 <html lang="en"><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">
-<title>MCU-Insight - how to use it on a new project</title>
+<title>MCU-Insight - do this, one step at a time</title>
 <style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 0 24px 64px; background: #f6f7f9; color: #1c2024;
-       font: 15px/1.6 -apple-system, Segoe UI, Roboto, sans-serif; }
-.wrap { max-width: 980px; margin: 0 auto; }
-header { padding: 40px 0 12px; }
-h1 { font-size: 30px; margin: 0 0 6px; letter-spacing: -0.02em; }
+       font: 15px/1.65 -apple-system, Segoe UI, Roboto, sans-serif; }
+.wrap { max-width: 900px; margin: 0 auto; }
+header { padding: 36px 0 8px; }
+h1 { font-size: 27px; margin: 0 0 8px; letter-spacing: -0.02em; }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em;
      color: #6b7280; margin: 0 0 14px; }
-h3 { font-size: 15px; margin: 0 0 4px; }
+h3 { font-size: 16px; margin: 0 0 6px; }
 p { margin: 0 0 10px; }
-.lede { font-size: 17px; color: #4b5563; margin: 0 0 18px; max-width: 46em; }
 a { color: #2563eb; }
 nav a { display: inline-block; margin-right: 14px; font-size: 14px; }
 .lang { float: right; font-size: 14px; }
 .lang a { font-weight: 600; }
 section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-          padding: 20px 22px; margin-top: 18px; }
-.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-.card { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; }
-.card .step { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 8px; }
-.card .where { font: 11.5px/1 ui-monospace, monospace; color: #6b7280; margin-bottom: 6px; }
+          padding: 20px 22px; margin-top: 16px; }
+.step { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; margin-top: 12px; }
+.step .num { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 6px; }
+.step .where { font: 11.5px/1 ui-monospace, monospace; color: #6b7280; margin-bottom: 8px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
 pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13px;
-      overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+      overflow-x: auto; font: 12.5px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace;
       margin: 8px 0 0; white-space: pre; }
-pre.run { background: #1e293b; }
 pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
-code { font: 12.5px/1.5 ui-monospace, monospace; background: #f1f3f5;
-       padding: 1px 5px; border-radius: 4px; }
+.note { color: #6b7280; font-size: 13.5px; margin: 8px 0 0; }
+ul { margin: 6px 0 0; padding-left: 20px; }
+li { margin-bottom: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 td { padding: 7px 10px 7px 0; border-top: 1px solid #f1f3f5; vertical-align: top; }
 td:first-child { white-space: nowrap; color: #6b7280; }
-.note { color: #6b7280; font-size: 13px; }
-.ok { color: #067647; font-weight: 600; }
-.bad { color: #b42318; font-weight: 600; }
-.warn { color: #b54708; font-weight: 600; }
 footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 </style></head><body><div class=wrap>
 <header>
 <div class=lang><a href="index.zh.html">中文</a></div>
 <h1>MCU-Insight</h1>
-<p class="lede">What an ESP-IDF build costs, what the device actually does at runtime, and whether the last change made it worse.</p>
-<nav><a href="using-it.md">Usage guide</a><a href="diagnosis-case-study.md">Case study</a><a href="report-demo.html">Example report</a></nav></header>
-<section><h2>What it answers</h2><div class=grid>
-<div class="card"><h3>What does this build cost</h3><p class="note">Flash, static DRAM, IRAM and the app partition, per component, from the linker map and the binary. No board needed.</p></div>
-<div class="card"><h3>What is the device doing</h3><p class="note">Stack high-water marks per task, the smallest free heap and the largest free block, per-core idle share, latency percentiles, sleep residency: whatever the firmware publishes.</p></div>
-<div class="card"><h3>Did the change make it worse</h3><p class="note">Budget rules that bound a value or a slope, a comparison against a stored baseline, and an evidence pack when something needs explaining.</p></div>
-</div></section>
-<section><h2>Four steps on a new project</h2><div class="card"><div class="step">1</div><div class="where">run in mcu-insight\</div><h3>Copy the device agent in</h3><p class="note">One ESP-IDF component. ESP-IDF wants components inside the project tree, so this copies it there and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">the project before</p><pre class="out">My-Project\
+<nav>
+
+<a href="using-it.md">Full guide</a>
+<a href="diagnosis-case-study.md">Case study</a>
+<a href="report-demo.html">Example report</a>
+</nav></header>
+<section><h2>What this is</h2><p>It does four things. That is the whole tool.</p><ul>
+<li>copy one small component into your ESP-IDF project, so the firmware reports its own state every few seconds</li><li>run one command and get an <b>HTML report a human can read</b>: how much flash and RAM the build takes, how much stack each task has left, the smallest free heap, how slow inference gets</li><li>when something is wrong, get an <b>evidence pack</b>: every known fact, numbered, ready to paste into any AI</li><li>check the AI's answer back against that pack, which catches a citation that does not exist</li>
+</ul><p class="note">No network, no account, no instruments.</p></section>
+<section><h2>You touch three places, and nothing else</h2><ul>
+<li>My-Project/main/main.c - five additions, each one shown below</li><li>My-Project/main/CMakeLists.txt - one name added to REQUIRES</li><li>mcu-insight/budgets/my-board.json - a new file with your limits in it</li>
+</ul></section>
+<section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
+<div class=step><div class="where">run inside mcu-insight\</div><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
+map       : D:\ESP32-FAE\ESP32-Signal-Processing-System-github\build\signal_processing_system.map
+
+Flash image
+  estimated   :  1,065,624 B  (1.02 MiB)
+  actual .bin :  1,065,728 B  (1.02 MiB)  delta +104 B
+
+  app partition: 1,536,000 B (1.46 MiB)
+  used         : 1,065,728 B (69.4%)  [#################.......]
+  free         : 470,272 B (459.2 KiB, 30.6%)
+...</pre></div>
+<div class=step><div class="where">run inside mcu-insight\</div><h3>What the model costs</h3><pre class="run">python -m mcu_insight model build/model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
+model     : training\out\waveform_model_real.tflite
+size      : 6,544 B (6.4 KiB)
+schema    : version 3   subgraphs 1   operators 4   tensors 11
+description: MLIR Converted.
+
+Memory
+  weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
+...</pre></div>
+</section>
+<section><h2>B. Add five things, and see what the board is really doing</h2><div class=step><div class="num">1</div><div class="where">run inside mcu-insight\</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">My-Project\
   CMakeLists.txt
-  main\main.c</pre></div><div><p class="note">the same project after</p><pre class="out">My-Project\
+  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">My-Project\
   CMakeLists.txt
   components\            &lt;- created by the command
     mcu_telemetry\       &lt;- created by the command
       CMakeLists.txt
       include/mcu_telemetry.h
       mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing here is created by hand. The command makes components\ and mcu_telemetry\ if they are missing. The argument has to be the project root, the directory that holds CMakeLists.txt; given anything else it stops and says it does not look like an ESP-IDF project.</p><p class="note" style="margin-top:12px">One line in the project's main/CMakeLists.txt, or the header will not resolve:</p><pre class="run"># main/CMakeLists.txt
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run inside My-Project\</div><h3>Add the five things to main.c</h3><p class="note">Each one is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the top, with the other includes */
+#include &quot;mcu_telemetry.h&quot;
+
+/* 2. outside app_main, anywhere in the file */
+static const mcu_telemetry_config_t telemetry = {
+    .device = &quot;my-board&quot;,      /* a name for this board, used to group series */
+    .firmware = FW_REVISION,   /* optional: short git hash */
+    .report_period_ms = 5000,  /* report every 5 seconds */
+};
+
+void app_main(void)
+{
+    /* ... your own initialisation ... */
+
+    /* 3. after the hardware is up */
+    ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
+
+    /* 4. right after each task you create, with the same name */
+    xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
+    mcu_telemetry_register_task(&quot;control&quot;, 4096);
+
+    /* 5. wherever a number you care about is computed */
+    mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
+    mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);  /* gives p50, p99, min, max */
+}</pre></div><div class=step><div class="num">3</div><div class="where">run inside My-Project\</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS &quot;main.c&quot;
     INCLUDE_DIRS &quot;.&quot;
-    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note" style="margin-top:12px">and then build and flash, from the firmware project:</p><pre class="run">cd ..\My-Project
-idf.py -p COM19 flash monitor</pre></div>
-<div class=grid style="margin-top:14px"><div class="card"><div class="step">2</div><div class="where">run in mcu-insight\</div><h3>Capture</h3><p class="note">Frames are appended to a SQLite file, so every command after this reads the file instead of the board. Log lines on the same port are ignored.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre></div><div class=step><div class="num">4</div><div class="where">run inside My-Project\</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run inside mcu-insight\</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices
@@ -75,9 +119,16 @@ Devices
 Metric trends (esp32-signal-processor, 21 frames)
   uptime_ms                              13,320 -&gt;    103,370   change +90,050
   custom.inference_us                     1,320 -&gt;        954   change -366
-  task.telemetry.stack_free_min           2,408 -&gt;      2,184   change -224
-  custom.infer_min_us                     1,165 -&gt;        946   change -219
-...</pre></div><div class="card"><div class="step">3</div><div class="where">run in mcu-insight\</div><h3>Judge</h3><p class="note">The exit code is 0 for a pass, 1 for a failure or a rule that could not be judged, so CI can gate on it.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
+...</pre></div></section>
+<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run inside mcu-insight\</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
+  &quot;rules&quot;: [
+    {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
+    {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
+    {&quot;metric&quot;: &quot;task.*.stack_free_min&quot;, &quot;min&quot;: 256, &quot;stat&quot;: &quot;min&quot;},
+    {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
+  ],
+  &quot;baseline&quot;: {&quot;path&quot;: &quot;my-board-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
+}</pre></div><div class=step><div class="num">7</div><div class="where">run inside mcu-insight\</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
 database  : captures\fault-heap.db
 devices   : esp32-signal-processor
 rules     : 7   metrics matched: 21
@@ -100,53 +151,7 @@ Changed since baseline (budgets\signal_baseline.json)
 
 3 metric(s) not present in the baseline
 
-RESULT: FAIL
-
-On a healthy capture the same command prints RESULT: PASS and exits 0.</pre></div><div class="card"><div class="step">4</div><div class="where">run in mcu-insight\</div><h3>Look at it</h3><p class="note">One self-contained HTML file: data inlined, charts hand-written SVG, no server, no CDN, no script.</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div>
-<p class="note" style="margin-top:16px">The command writes report.html into the directory you ran it from. Double-click it, or open it from the file manager. The report linked here was made the same way, from the capture committed in this repository: <a href="report-demo.html">docs/report-demo.html</a></p></section>
-<section><h2>Where everything lives</h2><p class="note">All four commands run in the tool repository. Your firmware project is a neighbour: step 1 copies the agent into it, and the report step reads that project's build output.</p><div class=grid>
-<div class="card"><pre class="out">mcu-insight\   the tool, run every command here
-  mcu_insight\    the package
-  tools\          sync_firmware.py, fault_matrix.py
-  budgets\        your budget files go here
-  captures\       captured telemetry lands here (*.db)
-  docs\           index.html, report-demo.html, the guides</pre></div>
-<div class="card"><pre class="out">My-Project\   your firmware, next to the tool
-  components\
-    mcu_telemetry\   &lt;- step 1 writes this directory
-      CMakeLists.txt
-      include/mcu_telemetry.h
-      mcu_telemetry.c
-  main\main.c      &lt;- the five lines from step 1
-  build\           .map and .bin are read from here</pre></div>
-</div></section>
-<section><h2>What you add to your own project</h2><p class="note">Five lines of C, and one JSON file that says what the budgets are and what the metrics mean.</p>
-<div class="grid">
-<div><pre class="run">#include &quot;mcu_telemetry.h&quot;
-
-static const mcu_telemetry_config_t telemetry = {
-    .device = &quot;my-board&quot;,
-    .firmware = FW_REVISION,
-    .report_period_ms = 5000,
-};
-
-ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
-mcu_telemetry_register_task(&quot;control&quot;, TASK_STACK_CONTROL);
-mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
-mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div>
-<div><pre class="run">{
-  &quot;rules&quot;: [
-    {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
-    {&quot;metric&quot;: &quot;task.*.stack_free_min&quot;, &quot;min&quot;: 256, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
-  ],
-  &quot;baseline&quot;: {&quot;path&quot;: &quot;my-project-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
-}</pre></div>
-</div></section>
-<section><h2>What a diagnosis looks like</h2><p class="note">The tool does not guess. It collects a numbered evidence pack, you hand that to any model, and it checks the answer that comes back.</p>
-<div class="grid">
-<div class="card"><h3>evidence pack (diagnose)</h3><pre class="out">MCU-INSIGHT EVIDENCE PACK
+RESULT: FAIL</pre><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run inside mcu-insight\</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
 [E1] device esp32-signal-processor (firmware dev)
 [E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
 [E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
@@ -154,47 +159,15 @@ mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div>
 [E5] baseline capture: not recorded -- the file predates the capture shape. The one duration it carries is uptime_ms 248,337, the point the device had reached when the snapshot was taken
 [E6] note the baseline was taken after 248 s of uptime and this capture holds 95 s of steady state. A level delta on a high-water mark carries part of that difference, so the rates are the ones to compare; a baseline saved from now on records its own span and settles it
 [E7] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
-[E8] VIOLATION heap.free: falls at -956.9 per second, slope &gt;= -64/s over &gt;= 60 s of steady state
-...</pre></div>
-<div class="card"><h3>the model's answer</h3><pre class="out">The deliberately injected leak in main/main.c: s_leak_sink = malloc(2048) executed once per main
+...</pre></div><div><p class="note">2. what the AI says</p><pre class="out">The deliberately injected leak in main/main.c: s_leak_sink = malloc(2048) executed once per main
 loop iteration while s_fault == FAULT_HEAP [E98]. The pack&#x27;s own provenance states the fault is
 injected on purpose [E3], the capture is taken by tools/fault_matrix.py --port COM19 [E4], and the
-fault is armed at run time over the console, where FAULT heap means &quot;leak 2 KB per loop&quot; [E98].</pre></div>
-<div class="card"><h3>checked against the pack (audit)</h3><pre class="out">MCU-INSIGHT ANSWER AUDIT
+fault is armed at run time over the console, where FAULT heap means &quot;leak 2 KB per loop&quot; [E98].</pre></div><div><p class="note">3. checked against the pack (audit)</p><pre class="out">MCU-INSIGHT ANSWER AUDIT
 citations   : 50 distinct of 126 in the pack (99 available)
 unknown id  : none
 unknown name: none
 uncited line: 0 (a warning, not an error)
 
-RESULT: OK</pre></div>
-</div></section>
-<section><h2>Without a board</h2><p class="note">Two of the commands read build artefacts only, so they work on a laptop and in CI.</p>
-<div class="grid">
-<div class="card"><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
-map       : D:\ESP32-FAE\ESP32-Signal-Processing-System-github\build\signal_processing_system.map
-
-Flash image
-  estimated   :  1,065,624 B  (1.02 MiB)
-  actual .bin :  1,065,728 B  (1.02 MiB)  delta +104 B
-
-  app partition: 1,536,000 B (1.46 MiB)
-  used         : 1,065,728 B (69.4%)  [#################.......]
-  free         : 470,272 B (459.2 KiB, 30.6%)
-
-...</pre></div>
-<div class="card"><h3>What the TinyML model costs</h3><pre class="run">python -m mcu_insight model build/model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
-model     : training\out\waveform_model_real.tflite
-size      : 6,544 B (6.4 KiB)
-schema    : version 3   subgraphs 1   operators 4   tensors 11
-description: MLIR Converted.
-
-Memory
-  weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
-  tensor arena peak :        96 B  (worst case if nothing is reused: 118 B)
-...</pre></div>
-</div></section>
-<section><h2>What the HTML report contains</h2><p class="note">Five blocks, and every one of them is generated from the capture.</p>
-<table><tr><td>Checks</td><td>the verdict, every rule, and any rule that was not judged</td></tr><tr><td>Baseline changes</td><td>what moved since the baseline snapshot, coloured only when the worrying direction is known</td></tr><tr><td>Metric trends</td><td>the metrics that moved most, one card each, with every reboot marked</td></tr><tr><td>Build resources</td><td>flash, static DRAM, IRAM, partition use, top components</td></tr><tr><td>Fault injection matrix</td><td>with a fault directory, whether the checks caught each injected fault</td></tr></table>
-<p class="note" style="margin-top:12px"><a href="report-demo.html">Example report</a></p></section>
-<footer>Every output on this page was produced by running the tool against the captures and the build committed in this repository, not written by hand. Rebuild it with <code>python tools/build_guide.py</code>.</footer>
+RESULT: OK</pre></div></div><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre></div></section>
+<footer>Every output on this page was produced by running the tool against the captures and the build committed in this repository. Rebuild it with <code>python tools/build_guide.py</code>.</footer>
 </div></body></html>
