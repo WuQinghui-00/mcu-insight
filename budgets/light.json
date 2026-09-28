@@ -1,0 +1,7 @@
+{
+  "rules": [
+    {"metric": "heap.min", "min": 100000, "stat": "min"},
+    {"metric": "task.*.stack_free_min", "min": 384, "stat": "min"},
+    {"metric": "custom.light_sleep_pct", "min": 50, "stat": "last", "min_samples": 15}
+  ]
+}

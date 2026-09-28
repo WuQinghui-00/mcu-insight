@@ -12,6 +12,7 @@ from . import checks as checks_mod
 from . import compare as compare_mod
 from .analysis import build_report
 from .collector import collect
+from .html_report import build_html, gather_fault_cases
 from .model_report import model_to_dict, render_model
 from .report import render
 from .simulator import SCENARIOS, iter_frames
@@ -113,6 +114,26 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--save-baseline", help="store the current values as a baseline")
     check.add_argument("--top", type=int, default=12)
     check.add_argument("--json", action="store_true")
+
+    report = sub.add_parser(
+        "report",
+        help="Write a self-contained HTML report of one capture.",
+    )
+    report.add_argument("--db", required=True, help="path to the SQLite database")
+    report.add_argument("--config", required=True, help="JSON file with threshold rules")
+    report.add_argument("--baseline", help="baseline JSON (defaults to the one in the config)")
+    report.add_argument("--map", help="path to a .map file, for the build resource blocks")
+    report.add_argument("--bin", dest="binary", help="path to the matching .bin file")
+    report.add_argument("--partition", help="app partition size, e.g. 1500K")
+    report.add_argument("--faults", help="directory of fault-*.db captures to summarise")
+    report.add_argument(
+        "--fault-config",
+        help="budget used to re-check the fault captures "
+             "(default: fault_matrix.json next to --config)",
+    )
+    report.add_argument("--device", help="device to report on (default: the busiest)")
+    report.add_argument("--top", type=int, default=8, help="how many trend cards to draw")
+    report.add_argument("--out", default="report.html", help="output file")
     return parser
 
 
@@ -284,6 +305,67 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    db = Path(args.db)
+    if not db.is_file():
+        print(f"error: database not found: {db}", file=sys.stderr)
+        return 2
+    try:
+        config = checks_mod.load_config(args.config)
+    except checks_mod.ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    baseline_path = Path(args.baseline) if args.baseline else None
+    if baseline_path is None:
+        configured = config.get("baseline", {}).get("path")
+        if configured:
+            candidate = Path(configured)
+            if not candidate.is_absolute():
+                candidate = Path(args.config).parent / candidate
+            baseline_path = candidate if candidate.is_file() else None
+
+    build = None
+    partition = None
+    if args.map:
+        if not _check_file(Path(args.map), "map file"):
+            return 2
+        binary = Path(args.binary) if args.binary else None
+        build = build_report(Path(args.map), binary)
+        partition = parse_size(args.partition) if args.partition else None
+
+    baseline = checks_mod.load_baseline(baseline_path) if baseline_path else None
+
+    with Store(db) as store:
+        report = checks_mod.check_store(store, config, baseline, baseline_path)
+        faults = None
+        if args.faults:
+            fault_config = config
+            candidate = (Path(args.fault_config) if args.fault_config
+                         else Path(args.config).parent / "fault_matrix.json")
+            if candidate.is_file():
+                fault_config = checks_mod.load_config(candidate)
+            else:
+                print(f"warning: {candidate} not found, reusing {args.config}",
+                      file=sys.stderr)
+            faults = gather_fault_cases(args.faults, fault_config)
+        page = build_html(
+            store,
+            report,
+            build=build,
+            partition=partition,
+            fault_cases=faults,
+            device=args.device,
+            top=args.top,
+        )
+
+    out = Path(args.out)
+    out.write_text(page, encoding="utf-8")
+    state = "PASS" if report.ok else "FAIL"
+    print(f"{out} written ({len(page):,} bytes), checks {state}")
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -295,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         "summary": cmd_summary,
         "simulate": cmd_simulate,
         "check": cmd_check,
+        "report": cmd_report,
     }.get(args.command)
     if handler is None:
         parser.error(f"unknown command: {args.command}")
