@@ -4,9 +4,9 @@
 
 [![tests](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml/badge.svg)](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml)
 
-嵌入式固件的资源可观测性与 AI 诊断（ESP-IDF / FreeRTOS）。
+TinyML 嵌入式固件的资源核算、可观测性与 AI 诊断（ESP-IDF / FreeRTOS）
 
-**直接看指南：** [中文](https://wuqinghui-00.github.io/mcu-insight/index.zh.html) · [English](https://wuqinghui-00.github.io/mcu-insight/)
+**使用直接看指南：** [中文](https://wuqinghui-00.github.io/mcu-insight/index.zh.html) · [English](https://wuqinghui-00.github.io/mcu-insight/)
 
 它回答的是**看代码看不出来**的那类问题：
 
