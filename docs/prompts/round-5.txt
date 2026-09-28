@@ -1,0 +1,378 @@
+你在诊断一个 ESP-IDF / FreeRTOS 固件的资源问题。
+
+只根据下面的证据回答，不要用别的东西。
+
+回答要求：
+
+1. 每条事实都要引用证据编号，例如 [E12]。没有编号的说法就是猜，而猜比不说更糟。
+2. 不要编造指标名、数值、文件名或配置项。
+3. 检查只告诉你越界了，不告诉你为什么。为什么，要从时序和补丁里推。
+4. 写短。这是给忙人看的一段结论，不是一篇论文。
+
+严格按下面这个格式写，别加别的内容。每节最多 3 条，每条一句话，全文不超过 400 字，用中文：
+
+- 根因：最可能的那一个，给一个置信度，附证据编号。
+- 关键数字：把测量和代码对上，例如「-660 B/s，也就是每 200 ms 分配 128 字节」。
+- 排除不掉的可能：只写现有证据真的分不开的，一条一行；没有就写「无」。
+- 修复：一句话，指到哪个文件哪一行。
+- 验证：一条命令，哪个指标应该变成多少。
+
+不要复述证据包，不要解释这个工具。
+
+证据
+----
+MCU-INSIGHT EVIDENCE PACK
+[E1] device leaky-sensor-node (firmware unknown)
+[E2] capture 30 frames over 1 boot session(s) from captures\leaky-sensor-node.db
+[E3] budget file budgets\leaky-sensor-node.json
+[E4] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
+[E5] VIOLATION heap.free: falls at -660.0 per second, slope >= -64/s over >= 60 s of steady state
+[E6] VIOLATION task.format.stack_free_min: 56 is below 256
+[E7] rule heap.min min >= 100000
+[E8] rule heap.free slope >= -64/s over >= 60 s of steady state
+[E9] rule task.*.stack_free_min min >= 256
+[E10] rule custom.idle*_pct min >= 40
+[E11] metric heap.free (B, instantaneous sample): last 185,660, min 185,660, max 283,908 over 30 samples
+[E12] series heap.free [B]: 35ms=283,908, 5,033ms=278,068, 10,032ms=274,760, 15,032ms=271,460, 20,032ms=268,160, 25,032ms=264,860, 30,032ms=261,560, 35,032ms=258,260, 40,032ms=254,960, 45,032ms=251,660, 50,032ms=248,360, 55,032ms=245,060, 60,032ms=241,760, 65,032ms=238,460, 70,032ms=235,160, 75,032ms=231,860, 80,032ms=228,560, 85,032ms=225,260, 90,032ms=221,960, 95,032ms=218,660, 100,032ms=215,360, 105,032ms=212,060, 110,032ms=208,760, 115,032ms=205,460, 120,032ms=202,160, 125,032ms=198,860, 130,032ms=195,560, 135,032ms=192,260, 140,032ms=188,960, 145,032ms=185,660
+[E13] metric task.format.stack_free_min (B, high-water mark, monotonic since boot): last 56, min 56, max 56 over 29 samples
+[E14] series task.format.stack_free_min: constant at 56 across 29 samples
+[E15] metric heap.min (B, high-water mark, monotonic since boot): last 185,568, min 185,568, max 283,908 over 30 samples
+[E16] series heap.min: dropped to fit the size budget
+[E17] metric heap.largest (B, instantaneous sample): last 110,592, min 110,592, max 155,648 over 30 samples
+[E18] series heap.largest: dropped to fit the size budget
+[E19] metric task.main.stack_free_min (B, high-water mark, monotonic since boot): last 2,072, min 2,072, max 2,072 over 1 samples
+[E20] series task.main.stack_free_min: constant at 2,072 across 1 samples
+[E21] metric task.telemetry.stack_free_min (B, high-water mark, monotonic since boot): last 2,412, min 2,412, max 2,412 over 30 samples
+[E22] series task.telemetry.stack_free_min: constant at 2,412 across 30 samples
+[E23] metric task.IDLE0.stack_free_min (B, high-water mark, monotonic since boot): last 1,028, min 1,028, max 1,236 over 30 samples
+[E24] series task.IDLE0.stack_free_min: dropped to fit the size budget
+[E25] metric task.IDLE1.stack_free_min (B, high-water mark, monotonic since boot): last 1,024, min 1,024, max 1,024 over 30 samples
+[E26] series task.IDLE1.stack_free_min: constant at 1,024 across 30 samples
+[E27] metric task.Tmr Svc.stack_free_min (B, high-water mark, monotonic since boot): last 1,548, min 1,548, max 1,548 over 30 samples
+[E28] series task.Tmr Svc.stack_free_min: constant at 1,548 across 30 samples
+[E29] metric task.ipc0.stack_free_min (B, high-water mark, monotonic since boot): last 504, min 504, max 504 over 30 samples
+[E30] series task.ipc0.stack_free_min: constant at 504 across 30 samples
+[E31] metric task.ipc1.stack_free_min (B, high-water mark, monotonic since boot): last 496, min 496, max 496 over 30 samples
+[E32] series task.ipc1.stack_free_min: constant at 496 across 30 samples
+[E33] metric task.sample.stack_free_min (B, high-water mark, monotonic since boot): last 1,860, min 1,860, max 1,860 over 29 samples
+[E34] series task.sample.stack_free_min: constant at 1,860 across 29 samples
+[E35] metric custom.idle1_pct (%, instantaneous sample): last 100, min 99, max 100 over 29 samples
+[E36] series custom.idle1_pct: dropped to fit the size budget
+[E37] metric custom.idle0_pct (%, instantaneous sample): last 99, min 99, max 99 over 29 samples
+[E38] series custom.idle0_pct: constant at 99 across 29 samples
+[E39] metric custom.formatted_len (instantaneous sample): last 9, min 8, max 9
+[E40] metric custom.payload_first_byte (instantaneous sample): last 123, min 123, max 123; first byte of the buffer allocated for this sample; it never goes back
+[E41] metric custom.sample_raw (instantaneous sample): last 63,387, min 3,207, max 65,175; the fake sensor reading, changing every sample
+[E42] metric custom.uart_tx_retries (count, counter since boot): last 0, min 0, max 0
+[E43] metric task.format.stack_total (B, configured stack size): last 3,072, min 3,072, max 3,072
+[E44] metric task.sample.stack_total (B, configured stack size): last 3,072, min 3,072, max 3,072
+[E45] metric uptime_ms (ms, clock since boot): last 145,032, min 35, max 145,032
+[E46] config examples\leaky-sensor-node\sdkconfig: CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y; CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL=2; CONFIG_COMPILER_OPTIMIZATION_DEBUG=y; CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y; CONFIG_COMPILER_OPTIMIZATION_LEVEL_DEBUG=y; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=160; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y; CONFIG_ESP_INT_WDT=y; CONFIG_ESP_INT_WDT_CHECK_CPU1=y; CONFIG_ESP_INT_WDT_TIMEOUT_MS=300; CONFIG_ESP_MAIN_TASK_STACK_SIZE=3584; CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2304; CONFIG_ESP_TASK_WDT=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=y; CONFIG_ESP_TASK_WDT_EN=y; CONFIG_ESP_TASK_WDT_INIT=y; CONFIG_ESP_TASK_WDT_TIMEOUT_S=5; CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584; CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y; CONFIG_FREERTOS_HZ=100; CONFIG_LOG_DEFAULT_LEVEL=3; CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+[E47] working tree examples\leaky-sensor-node at 7e43e94 docs: keep the run that found real bugs, and file it properly
+[E48] modified  M ../../mcu_insight/diagnose.py
+[E49] modified  M ../../tests/test_diagnose.py
+[E50] diffstat mcu_insight/diagnose.py |  7 +++++--
+[E51] diffstat tests/test_diagnose.py  | 21 +++++++++++++++++++++
+[E52] diffstat 2 files changed, 26 insertions(+), 2 deletions(-)
+[E53] patch (since b4f1f82): 1592 line(s), truncated
+[E54] patch file budgets/leaky-sensor-node.json:
+      new file mode 100644
+      index 0000000..6fe4e57
+      --- /dev/null
+      +++ b/budgets/leaky-sensor-node.json
+      @@ -0,0 +1,12 @@
+      +{
+      +  "rules": [
+      +    {"metric": "heap.min", "min": 100000, "stat": "min"},
+      +    {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
+      +    {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},
+      +    {"metric": "custom.idle*_pct", "min": 40, "stat": "min"}
+      +  ],
+      +  "metrics": {
+      +    "custom.sample_raw": {"description": "the fake sensor reading, changing every sample"},
+      +    "custom.payload_first_byte": {"description": "first byte of the buffer allocated for this sample; it never goes back"}
+      +  }
+      +}
+      \ No newline at end of file
+[E55] patch file captures/leaky-sensor-node.db:
+      new file mode 100644
+      index 0000000..2ddaf67
+      Binary files /dev/null and b/captures/leaky-sensor-node.db differ
+[E56] patch file docs/answers/round-4.md:
+      new file mode 100644
+      index 0000000..82673ef
+      --- /dev/null
+      +++ b/docs/answers/round-4.md
+      @@ -0,0 +1,88 @@
+      +# leaky-sensor-node 资源诊断（对应 prompt.txt 证据包）
+      +
+      +本文引用的是该证据包自己的编号（[E1]–[E71]），与前几份包（v1/v2/v3）的编号不可互用。
+      +
+      +## 根因
+      +
+      +`examples/leaky-sensor-node/main/main.c` 里 `sample_task()` 每次采样 `malloc(PAYLOAD_BYTES)`
+      +后把指针交给 `s_retained` 且从不释放 [E71]。置信度：**高**。
+      +
+      +- 速率吻合到帧：`heap.free` 是空闲总量的瞬时采样 [E11]，它在全部 29 个连续区间里每 5 s 正好
+      +  掉 3,300 B [E12]，即 660 B/s，与违规判定里的斜率 −660.0/s 完全一致 [E5]。
+      +- 换算到每次采样：3,300 B ÷ 25 = 132 B；25 来自 5 s 报告周期除以 200 ms 采样周期 [E71]
+      +  （`SAMPLE_PERIOD_MS 200`、`report_period_ms = 5000` [E71]）。132 B 比 payload 的 128 B 多
+      +  4 B，多出来的部分只能是每次分配的开销或同帧其它小额分配，证据包不足以再细分。
+      +- 源码注释自己预测 640 B/s，实测 660 B/s [E71]、[E5]，差的 20 B/s 正是 5 × 4 B——注释没把分配
+      +  开销算进去。
+      +- 这个分配确实在工作：`custom.payload_first_byte` 恒为 123 [E40]，即 `{"raw":…}` 的首字节
+      +  `{`；`custom.sample_raw` 每次采样都在变 [E41]；`custom.formatted_len` 在 8–9 之间 [E39]。
+      +- 器件名是 leaky-sensor-node、固件版本未知 [E1]，补丁把它当作新增的、故意做坏的示例整块引入
+      +  [E48]–[E64]，文件头注释也写明 "deliberately flawed"、"never releases" [E71]。所以这不是
+      +  回归，而是示例本身的缺陷。
+      +- 诚实说明：`heap.free` 只是总量曲线 [E11]，单靠时序无法直接指认调用点；把它判成
+      +  `sample_task` 的 `malloc` 靠的是"量化步长 × 采样周期 × 132 B"这组算术加源码注释三者互证。
+      +  要确定性归因需要按调用点聚合的堆追踪。
+      +
+      +另外，本次有**第二个独立的违规**，不是泄漏造成的：`task.format.stack_free_min` 56 B 低于
+      +256 B 下限 [E6]、[E9]。该任务配置栈 3,072 B [E43]，而剩余高水位 29 帧恒为 56 B [E13]、[E14]；
+      +来源是 `format_task()` 里 1,800 B 的栈数组 `FORMAT_SCRATCH` [E71]。差口很明确：
+      +3,072 − 1,800 = 1,272 B，减去实测 56 B，还有约 1,216 B 被该任务的其它栈帧吃掉（`snprintf`
+      +内部、遥测调用等）[E13]、[E43]、[E71]。这条违反了文件头注释里"还能剩大约 1 KB，256 B 的下限
+      +不会触发"的预期 [E71]——规则真的触发了，是注释估错，不是检查误报。
+      +
+      +## 其它可能
+      +
+      +针对堆下降：
+      +
+      +- **启动期一次性占用**：排除。29 帧里每帧都掉 3,300 B，没有任何一帧持平 [E12]；启动帧
+      +  （35 ms → 5,033 ms）额外掉的 5,840 B 才是一次性的 [E12]。
+      +- **碎片化**：排除。`heap.free` 是空闲总量 [E11]，它在持续下降；而且 `heap.largest` 从 60 s 起
+      +  就钉在 110,592 B 不动 [E18]，大块没变、空闲总量却继续掉，说明是持续的小额占用，不是把大块
+      +  切碎。
+      +- **大块一次性分配后不还（TLS/socket 缓冲之类）**：排除。步长严格量化为每 5 s 恰好 3,300 B，
+      +  并与 200 ms 采样周期同步 [E12]、[E71]。
+      +- **泄漏发生在遥测组件内部而不是 main.c**：**不能排除**。每次采样还会调用两次
+      +  `mcu_telemetry_set_custom_int` [E71]，而被 vendored 的 `components/mcu_telemetry` 源码不在
+      +  补丁里（只有 `.gitignore` 提到它是同步进来的）[E68]。倾向 main.c 的理由只是 132 B 紧贴
+      +  128 B payload，而不是两次写入的某个倍数。能把两者分开的测量：按调用点聚合的堆追踪，或者让
+      +  `sample_task` 暂停后再看斜率是否归零。
+      +- **"heap.min 没越界所以没问题"**：不成立。heap.min 规则 [E7] 现在确实通过（末值 185,568
+      +  [E15]），但按 660 B/s 从 185,568 降到 100,000 只剩约 130 s，继续跑同样会越界。
+      +
+      +针对栈违规：
+      +
+      +- **规则误报**：无法从本包排除。`stack_free_min` 是"自启动单调的高水位" [E13]，56 B 只证明历史
+      +  最坏值到过这里，不能区分"某一帧瞬时下探"和"每帧都这么深"；区分它需要栈的瞬时序列，本包没有
+      +  这个指标。
+      +- **别的原因导致 format 任务栈变深**（例如遥测调用的展开）：包里只有高水位一个数 [E13]，无法
+      +  分解；能分开的是 `FORMAT_SCRATCH` 去除后的对照采集。
+      +
+      +另外两处取样缺口建议一并确认：采集声明 30 帧 [E2]，但 `task.main.stack_free_min` 只有 1 帧
+      +[E19]、`task.format` 与 `custom.idle*` 只有 29 帧 [E13]、[E35]、[E37]。
+      +
+      +## 修复
+      +
+      +- **泄漏（最小改动）**：让每帧分配不再被保留。要么把 `s_retained` 这个持有去掉、改用 128 B 的
+      +  局部缓冲；要么保留堆分配但在 `mcu_telemetry_set_custom_int("payload_first_byte", …)` 之后
+      +  `free(payload)`。注意只删掉 `s_retained` 赋值而不 free 是不行的——那样编译器会把 malloc/free
+      +  对消掉，这正是 [E71] 用 volatile 兜住的原因。
+      +- **栈（最小改动）**：把 `FORMAT_SCRATCH` 从 1,800 降下来，或把 `FORMAT_STACK` 提高，至少要
+      +  多出 200 B 余量，才能从 56 B 越过 256 B 的下限 [E6]、[E9]、[E13]。
+      +- **元数据补齐**：基线没有版本号，diff 范围必须用 `--diff-since` 点名 [E4]；本包给的补丁是
+      +  相对 HEAD 的未提交新增 [E47]、[E65]，没有基线序列，所以包内不存在任何"相对基线变差"的结论。
+      +
+      +## 验证
+      +
+      +证据包里没有采集命令本身（[E4] 只说明基线缺版本号、需要 `--diff-since`），请把生成
+      +`captures\my-leak.db` [E2] 的那条命令给我；重跑后仍按 `budgets\leaky-sensor-node.json` [E3]
+      +判定。
+      +
+      +- **斜率指标**：`heap.free` 的斜率要从 −660 B/s [E5] 回到 ≥ −64/s [E8]，对应到序列就是每 5 s
+      +  帧的落差从 3,300 B [E12] 变成 ~0（只剩噪声级抖动）。
+      +- **量级**：若再跑满 145 s 左右，`heap.min` [E15] 应从 185,568 保持稳定、接近 283,908 的起点
+      +  [E12]，而不是继续以 660 B/s 下滑；按现速率它会在约 130 s 后跌破 100,000 并触发 [E7]。
+      +- **栈指标**：`task.format.stack_free_min` [E13] 要从 56 B 升到 ≥ 256 B [E9]，即至少增加
+      +  200 B 余量；把 `FORMAT_SCRATCH` 从 1,800 降到 1,600 大致就是这个量。
+      +- **副作用检查**：`custom.payload_first_byte` 应仍然报 123 [E40]、`custom.sample_raw` 仍在变
+      +  [E41]，`custom.idle*_pct` 规则 [E10] 继续通过（99–100% [E36]、[E38]），说明修复没有把载荷
+      +  生成这件事一起删掉。
+[E57] patch file docs/diagnosis-case-study.md:
+      index 524d3e0..545b964 100644
+      --- a/docs/diagnosis-case-study.md
+      +++ b/docs/diagnosis-case-study.md
+      @@ -141,6 +141,28 @@ python -m mcu_insight diagnose --db captures/fault-heap.db --config budgets/sign
+       python -m mcu_insight audit --pack docs/prompts/round-3.txt --answer docs/answers/round-3.md
+       ```
+      
+      +## A fourth round: a real defect, not an injected one
+      +
+      +The three rounds above diagnose a capture whose fault was injected through a
+      +switch. That proves the checks fire, not that they fire on ordinary code.
+      +`examples/leaky-sensor-node/` is an ordinary small firmware with two defects in
+      +it, and the guide was followed on it by someone who had not written any of it.
+      +
+      +Both were found. `sample_task` allocates 128 bytes per sample and never releases
+      +them: the free heap falls 85,800 bytes over 130 seconds, a slope of -660 B/s.
+      +The floor rule stayed quiet, because the heap was still at 185 KB -- only the
+      +slope rule had anything to say, which is the argument for having both. The
+      +second defect was never planted: `format_task` keeps a 1,800 byte array on a
+      +3,072 byte stack and ends up with 56 bytes of headroom once `snprintf` is
+      +counted.
+      +
+      +The answer is worth reading for its arithmetic. It derived 660 B/s from 3,300
+      +bytes per five second frame, divided by the 25 samples in one frame, and
+      +concluded that 132 bytes per sample against a 128 byte payload is four bytes of
+      +allocator overhead -- correcting the rate the source comment claimed.
+      +
+      +The run is kept: `captures/leaky-sensor-node.db`, `docs/report-leaky-sensor-node.html`,
+      +`docs/prompts/round-4.txt`, `docs/answers/round-4.md`.
+       ## What it demonstrates
+      
+       The tool's value is not that it reads the code; a model can read the code. The
+[E58] patch file docs/index.html:
+      index 3ca58c0..15bc766 100644
+      --- a/docs/index.html
+      +++ b/docs/index.html
+      @@ -29,6 +29,7 @@ pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13p
+             margin: 8px 0 0; white-space: pre; }
+       pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
+       .note { color: #6b7280; font-size: 13.5px; margin: 8px 0 0; }
+      +table.errors td:first-child { white-space: normal; }
+       ul { margin: 6px 0 0; padding-left: 20px; }
+       li { margin-bottom: 4px; }
+       table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      @@ -40,19 +41,25 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
+       <div class=lang><a href="index.zh.html">中文</a></div>
+       <h1>MCU-Insight</h1>
+       <nav>
+      -<a href="https://github.com/WuQinghui-00/mcu-insight">Repository</a>
+      -<a href="https://github.com/WuQinghui-00/mcu-insight/blob/main/docs/using-it.md">Full guide</a>
+      -<a href="https://github.com/WuQinghui-00/mcu-insight/blob/main/docs/diagnosis-case-study.md">Case study</a>
+      +
+      +<a href="using-it.md">Full guide</a>
+      +<a href="diagnosis-case-study.md">Case study</a>
+       <a href="report-demo.html">Example report</a>
+       </nav></header>
+       <section><h2>What this is</h2><p>It does four things. That is the whole tool.</p><ul>
+       <li>copy one small component into your ESP-IDF project, so the firmware reports its own state every few seconds</li><li>run one command and get an <b>HTML report a human can read</b>: how much flash and RAM the build takes, how much stack each task has left, the smallest free heap, how slow inference gets</li><li>when something is wrong, get an <b>evidence pack</b>: every known fact, numbered, ready to paste into any AI</li><li>check the AI's answer back against that pack, which catches a citation that does not exist</li>
+       </ul><p class="note">No network, no account, no instruments.</p></section>
+      +<section><h2>Two paths to write down first</h2><p class="note">Every command below starts with cd, so it works from wherever your shell happens to be. Replace the two placeholders with your own paths:</p><ul>
+      +<li>tool-repo = the directory you cloned mcu-insight into; it contains docs\ and mcu_insight\</li>
+      +<li>your-project = your ESP-IDF project directory, the one with CMakeLists.txt in it (the directory idf.py runs in)</li>
+      +</ul>
+      +<p class="note"><b>The one thing people get wrong: idf.py runs in your-project; mcu_insight and sync_firmware.py run in tool-repo.</b></p></section>
+       <section><h2>You touch three places, and nothing else</h2><ul>
+      -<li>My-Project/main/main.c - three lines, each one shown below</li><li>My-Project/main/CMakeLists.txt - one name added to REQUIRES</li><li>mcu-insight/budgets/my-board.json - a new file with your limits in it</li>
+      +<li>your-project/main/main.c - three lines, each one shown below</li><li>your-project/main/CMakeLists.txt - one name added to REQUIRES</li><li>tool-repo/budgets/my-board.json - a new file with your limits in it</li>
+       </ul></section>
+       <section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
+      -<div class=step><div class="where">run inside mcu-insight\</div><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
+      +<div class=step><div class="where">run in tool-repo</div><h3>What the build costs</h3><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight analyze &lt;your-project&gt;\build\&lt;your-project-name&gt;.map --bin &lt;your-project&gt;\build\&lt;your-project-name&gt;.bin --partition 1500K</pre><p class="note">The project name is the one inside project(...) in CMakeLists.txt. If you are unsure, look first:</p><pre class="run">Get-ChildItem &lt;your-project&gt;\build\*.map, &lt;your-project&gt;\build\*.bin</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
+       map       : build\signal_processing_system.map
+      
+       Flash image
+      @@ -63,7 +70,8 @@ Flash image
+         used         : 1,065,728 B (69.4%)  [#################.......]
+         free         : 470,272 B (459.2 KiB, 30.6%)
+       ...</pre></div>
+      -<div class=step><div class="where">run inside mcu-insight\</div><h3>What the model costs</h3><pre class="run">python -m mcu_insight model build/model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
+      +<div class=step><div class="where">run in tool-repo</div><h3>What the model costs</h3><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight model &lt;your-project&gt;\build\model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
+       model     : training\out\waveform_model_real.tflite
+       size      : 6,544 B (6.4 KiB)
+       schema    : version 3   subgraphs 1   operators 4   tensors 11
+      @@ -73,16 +81,17 @@ Memory
+         weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
+       ...</pre></div>
+       </section>
+      -<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run inside mcu-insight\</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">My-Project\
+      +<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run in tool-repo</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">cd &lt;tool-repo&gt;
+      +python tools/sync_firmware.py &lt;your-project&gt;</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">your-project\
+         CMakeLists.txt
+      -  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">My-Project\
+      +  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">your-project\
+         CMakeLists.txt
+         components\            &lt;- created by the command
+           mcu_telemetry\       &lt;- created by the command
+             CMakeLists.txt
+             include/mcu_telemetry.h
+             mcu_telemetry.c
+      -  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run inside My-Project\</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
+      +  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run in your-project</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
+       #include &quot;mcu_telemetry.h&quot;
+      
+       /* 2. outside app_main, anywhere in the file */
+      @@ -109,11 +118,20 @@ mcu_telemetry_register_task(&quot;control&quot;, 4096);
+       mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
+      
+       /* optional: a latency distribution for any call, one line at the call site */
+      -mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run inside My-Project\</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
+      +mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run in your-project</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
+       idf_component_register(
+           SRCS &quot;main.c&quot;
+           INCLUDE_DIRS &quot;.&quot;
+      -    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre></div><div class=step><div class="num">4</div><div class="where">run inside My-Project\</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run inside mcu-insight\</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+      +    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note">If you also want to set EXTRA_COMPONENT_DIRS in the project CMakeLists.txt yourself, guard it:</p><pre class="run"># My-Project/CMakeLists.txt
+      +cmake_minimum_required(VERSION 3.16)
+      +
+      +if(EXISTS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
+      +    set(EXTRA_COMPONENT_DIRS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
+      +endif()
+      +
+      +include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+      +project(my_app)</pre></div><div class=step><div class="num">4</div><div class="where">run in your-project</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">cd &lt;your-project&gt;
+      +idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run in tool-repo</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><p class="note">The first capture needs the serial library. Install it once, or run the capture with the ESP-IDF python, which already has it:</p><pre class="run">cd &lt;tool-repo&gt;\npython -m mcu_insight collect --db captures/board.db --source serial:COM19 --limit 30</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+       database  : captures\fault-off.db
+      
+       Devices
+      @@ -123,7 +141,11 @@ Metric trends (esp32-signal-processor, 21 frames)
+         uptime_ms                              13,320 -&gt;    103,370   change +90,050
+         custom.inference_us                     1,320 -&gt;        954   change -366
+       ...</pre></div></section>
+      -<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run inside mcu-insight\</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
+      +<section><h2>Something failed? Look it up here</h2><p class="note">These are the four a reader following this guide actually hits. Each one names the cause and a one line fix.</p>
+      +<table class=errors>
+      +<tr><td>CMakeLists.txt not found in project directory</td><td>You are not in the project directory. cd &lt;your-project&gt; first, then run idf.py.</td></tr><tr><td>Failed to resolve component &#x27;mcu_telemetry&#x27;</td><td>Step one was skipped, so the component is not there. Run sync_firmware.py from &lt;tool-repo&gt;.</td></tr><tr><td>reading a serial port needs pyserial</td><td>The serial library is missing. pip install pyserial, or capture with the ESP-IDF python.</td></tr><tr><td>Directory specified in EXTRA_COMPONENT_DIRS doesn&#x27;t exist</td><td>Also a skipped step one. If you wrote that line yourself, guard it as shown above.</td></tr>
+      +</table></section>
+      +<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run in tool-repo</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
+         &quot;rules&quot;: [
+           {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
+           {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
+      @@ -131,7 +153,8 @@ Metric trends (esp32-signal-processor, 21 frames)
+           {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
+         ],
+         &quot;baseline&quot;: {&quot;path&quot;: &quot;my-board-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
+      -}</pre></div><div class=step><div class="num">7</div><div class="where">run inside mcu-insight\</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
+      +}</pre></div><div class=step><div class="num">7</div><div class="where">run in tool-repo</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
+       database  : captures\fault-heap.db
+       devices   : esp32-signal-processor
+       rules     : 7   metrics matched: 21
+      @@ -154,7 +177,9 @@ Changed since baseline (budgets\signal_baseline.json)
+      
+       3 metric(s) not present in the baseline
+      
+      -RESULT: FAIL</pre><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run inside mcu-insight\</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
+      +RESULT: FAIL</pre><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run in tool-repo</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
+       [E1] device esp32-signal-processor (firmware dev)
+       [E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
+       [E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
+      @@ -171,7 +196,8 @@ unknown id  : none
+       unknown name: none
+       uncited line: 0 (a warning, not an error)
+      
+      -RESULT: OK</pre></div></div><p class="note">To have it answer in Chinese, add one flag:</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.</p><p class="note">The diagnosis that comes back is always these four parts:</p><ul><li>Root cause: the single most likely one, a confidence level, and the evidence ids behind it</li><li>Alternatives: what else could produce this, and which observation rules each one out</li><li>Fix: the smallest change that addresses the root cause</li><li>Verification: which command to run, which metric should move, and roughly how much</li></ul><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.</p></div></section>
+      +RESULT: OK</pre></div></div><p class="note">To have it answer in Chinese, add one flag:</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.</p><p class="note">The diagnosis that comes back is always these four parts:</p><ul><li>Root cause: the single most likely one, a confidence level, and the evidence ids behind it</li><li>Alternatives: what else could produce this, and which observation rules each one out</li><li>Fix: the smallest change that addresses the root cause</li><li>Verification: which command to run, which metric should move, and roughly how much</li></ul><pre class="run">cd &lt;tool-repo&gt;
+      +python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.</p></div></section>
+       <section><h2>So what is it worth</h2><ul>
+       <li><b>It sees what an AI cannot.</b> A model can read your code. It cannot read what is on your board: whether a stack has 512 bytes left or 256, whether the smallest free heap was 24 KB or 4 KB, whether inference P99 is 30 ms or 55 ms. Those exist only if something measures them.</li><li><b>It does not let the AI make things up.</b> Every fact is numbered, the answer has to cite it, and the audit fails an answer that cites an id which does not exist. Without that layer, a diagnosis only sounds reasonable.</li><li><b>It can say why this change made it worse.</b> With a baseline to compare against -- revision, capture length, and the slope of every metric -- it can tell a real regression from a capture that was simply shorter.</li>
+       </ul><p class="note">In one line: rules and statistics detect, an AI explains. The tool brings the evidence, the AI argues from it, and the citations between the two are checked by machine.</p></section>
+[E59] patch file docs/index.zh.html:
+      index 51a9eec..c9f5000 100644
+      --- a/docs/index.zh.html
+      +++ b/docs/index.zh.html
+      @@ -29,6 +29,7 @@ pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13p
+             margin: 8px 0 0; white-space: pre; }
+       pre.out { background: #f8fafc; color: #334155; border: 1px solid #e5e7eb; }
+       .note { color: #6b7280; font-size: 13.5px; margin: 8px 0 0; }
+      +table.errors td:first-child { white-space: normal; }
+[E60] note pack still exceeds the size budget after dropping series

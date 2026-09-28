@@ -54,6 +54,7 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <li>your-project = your ESP-IDF project directory, the one with CMakeLists.txt in it (the directory idf.py runs in)</li>
 </ul>
 <p class="note"><b>The one thing people get wrong: idf.py runs in your-project; mcu_insight and sync_firmware.py run in tool-repo.</b></p></section>
+<section><h2>Practise on a project that is already broken</h2><p><code>examples/leaky-sensor-node/</code> is a small firmware with two deliberate defects in it, a README with the commands, and the answers. Walk this guide through that before touching your own project: the tool should report two violations, one of which nobody planted.</p></section>
 <section><h2>You touch three places, and nothing else</h2><ul>
 <li>your-project/main/main.c - three lines, each one shown below</li><li>your-project/main/CMakeLists.txt - one name added to REQUIRES</li><li>tool-repo/budgets/my-board.json - a new file with your limits in it</li>
 </ul></section>

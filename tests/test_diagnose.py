@@ -324,7 +324,8 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertTrue(trimmed["truncated"])
         self.assertLess(len(text), len(full))
         self.assertLessEqual(len(text.encode("utf-8")), 6_000)
-        self.assertTrue(any(metric.get("dropped_series") for metric in trimmed["metrics"]))
+        self.assertTrue(any(metric.get("dropped_series") or metric.get("downsampled")
+                        for metric in trimmed["metrics"]))
         # the flagged series is the one thing that must survive
         kept = next(m for m in trimmed["metrics"] if m["name"] == "heap.min")
         self.assertTrue(kept["series_ms"])
@@ -335,6 +336,18 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertFalse(trimmed["truncated"])
         self.assertEqual(render_evidence(pack), text)
 
+    def test_trimming_halves_a_series_before_dropping_it(self):
+        # Round five lost the ability to rule out fragmentation because a whole
+        # series was dropped to save bytes. Half the samples still show shape.
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 0, "stat": "min"}],
+                             count=60, max_samples=60)
+        before = {m["name"]: len(m["series_ms"]) for m in pack["metrics"]}
+        trimmed, text = fit_pack(pack, max_bytes=8_000)
+        halved = [m for m in trimmed["metrics"]
+                  if before[m["name"]] and 2 <= len(m["series_ms"]) < before[m["name"]]]
+        self.assertTrue(halved, "nothing was halved, so the trim dropped whole series")
+        self.assertTrue(any(m.get("downsampled") for m in trimmed["metrics"]))
+        self.assertLessEqual(len(text.encode("utf-8")), 8_000)
     def test_a_trimmed_constant_metric_does_not_crash_the_renderer(self):
         # The bug a reader hit: fit_pack drops series to stay inside the budget
         # but keeps the flags, and "constant at <nothing>" raised IndexError.

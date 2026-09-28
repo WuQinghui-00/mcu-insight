@@ -163,6 +163,25 @@ allocator overhead -- correcting the rate the source comment claimed.
 
 The run is kept: `captures/leaky-sensor-node.db`, `docs/report-leaky-sensor-node.html`,
 `docs/prompts/round-4.txt`, `docs/answers/round-4.md`.
+## A fifth round: the same diagnosis in a fifth of the words
+
+The first four rounds produced answers nobody would read twice. Round one ran
+to 3,236 characters across 88 lines; the answer was correct and unusable.
+
+The prompt now bounds the answer: at most three bullets per section, one
+sentence each, 400 words in total, and no restating the evidence pack. Round
+five ran the same capture through the same model with that prompt:
+**695 characters, 11 lines, five sections**, and the same two defects, with the
+same arithmetic -- 3,300 bytes per frame over 25 samples is 132 bytes a sample
+against a 128 byte payload.
+
+Brevity cost one thing, and the answer said so itself. The pack had been trimmed
+to fit its size budget, which dropped the `heap.largest` series, so this answer
+could not rule out fragmentation -- the way round four had. The pack prints
+`dropped to fit the size budget` next to a metric whose series went, which is
+how the answer knew to say it.
+
+`docs/prompts/round-5.txt` and `docs/answers/round-5.md` are the pair.
 ## What it demonstrates
 
 The tool's value is not that it reads the code; a model can read the code. The

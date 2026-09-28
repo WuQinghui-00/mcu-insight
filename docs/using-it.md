@@ -1,133 +1,137 @@
-# Using MCU-Insight on a new project
+# MCU-Insight: the reference
 
-MCU-Insight answers three questions about an ESP-IDF firmware, from
-measurements rather than from reading the code.
+New here? Read the one page guide instead: `docs/index.html` (English) or
+`docs/index.zh.html` (中文). It walks a new project through the whole thing in
+order, showing the command and its output at every step.
 
-1. **What does this build cost?** Flash, static DRAM, IRAM and the app
-   partition, per component, taken from the linker map and the binary. No board
-   needed.
-2. **What does the device actually do?** Stack high-water marks per task, the
-   smallest free heap and the largest free block, per-core idle share, latency
-   percentiles, light sleep residency: whatever the firmware publishes.
-3. **Did this change make it worse, and why?** Budget rules that can bound a
-   value or a slope, a comparison against a stored baseline, a self-contained
-   HTML report, and an evidence pack plus an audit for an AI diagnosis.
+Better still, start on a project that is already broken.
+`examples/leaky-sensor-node/` is a small firmware with two deliberate defects,
+and its README has the answers. Walk the guide through that before touching your
+own project.
 
-It is not a profiler, a debugger, a power meter or a replacement for an
-oscilloscope. It reads build artefacts and what the firmware prints, and it
-says plainly what it cannot see.
+This file is the reference: the device agent, the configuration schema, what the
+metrics mean, and what the tool does not do.
 
-Everything except the model call runs offline on the Python standard library.
-There is no account, no cloud, and no telemetry of its own.
+## The two directories
 
-## The short version
+| name | what it is |
+|---|---|
+| `<tool-repo>` | the directory you cloned this into; it holds `mcu_insight/`, `tools/`, `docs/`, `budgets/`, `captures/` |
+| `<your-project>` | your ESP-IDF project; the directory holding `CMakeLists.txt`, the one `idf.py` runs in |
 
-```powershell
-python tools/sync_firmware.py ..\My-Project            # 1. vendor the agent
-python -m mcu_insight collect --db captures/board.db --source serial:COM19
-python -m mcu_insight check --db captures/board.db --config budgets/my-project.json
-python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html
-```
+Two rules, and they are the ones people get wrong:
 
-The rest of this document is what to put in each of those steps and how to read
-what comes back.
+* `idf.py` runs in `<your-project>`.
+* `mcu_insight` and `tools/sync_firmware.py` run in `<tool-repo>`.
 
-## 0. Requirements
+Every command below starts with its own `cd`, so it works from wherever your
+shell happens to be.
 
-* Python 3.9 or newer.
-* An ESP-IDF project (v5.x) and the toolchain that builds it.
-* A serial port to the board, for runtime telemetry.
-* `git`, optional: the diagnosis pack includes a diff when it can reach one.
-
-## 1. Install
+## Install
 
 ```powershell
-git clone <your fork> mcu-insight
-cd mcu-insight
+cd <tool-repo>
 python -m venv .venv
 .venv\Scripts\python -m pip install -e . --no-build-isolation
 .venv\Scripts\python -m pip install pyserial
 ```
 
-`--no-build-isolation` reuses the setuptools already in the venv, so the
-install needs no network. Every command also runs without installing:
-`python -m mcu_insight <command>` from the repository root.
+`--no-build-isolation` reuses the setuptools already in the venv, so the install
+needs no network. Every command also runs without installing, as
+`python -m mcu_insight <command>` from `<tool-repo>`.
 
-`pyserial` is needed for exactly one thing, reading frames straight off a
-board. The ESP-IDF Python environment already ships it, so the capture step
-below can also be run with that interpreter instead.
+`pyserial` is needed for exactly one thing, reading frames straight off a board.
+The ESP-IDF Python environment already ships it, so the capture step can also be
+run with that interpreter.
 
-## 2. Add the device agent to the firmware
-
-The agent is one small ESP-IDF component that prints a JSON line per report
-interval. ESP-IDF needs components inside the project tree, so copy it in:
+## Add the device agent
 
 ```powershell
-python tools/sync_firmware.py ..\My-Project
+cd <tool-repo>
+python tools/sync_firmware.py <your-project>
 ```
 
-That writes `..\My-Project\components\mcu_telemetry`. Re-run it after editing
-the canonical copy under `firmware/esp-idf/`; it reports what it copied and
-what was already current.
+That writes `<your-project>\components\mcu_telemetry`. The directory does not
+have to exist first; the command creates it. The argument must be the project
+root, the directory holding `CMakeLists.txt`; given anything else it stops and
+says so.
 
-In `main.c`:
+Then three lines in `main.c`: the include at the top, the config outside
+`app_main`, and the start call after the hardware is up.
 
 ```c
 #include "mcu_telemetry.h"
 
 static const mcu_telemetry_config_t telemetry = {
-    .device = "my-board",          /* stable name; series are grouped by it */
-    .firmware = FW_REVISION,       /* optional, but it is the identity you diff */
-    .report_period_ms = 5000,
+    .device = "my-board",      /* a name for this board */
+    .report_period_ms = 5000,  /* report every 5 seconds */
 };
-ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
-/* after starting each task */
-mcu_telemetry_register_task("control", TASK_STACK_CONTROL);
-
-/* anything the project wants to watch, by name */
-mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
-
-/* a latency histogram publishes <prefix>_min_us, _max_us, _mean_us, _p50_us,
- * _p99_us and _samples in one call */
-mcu_telemetry_histogram_add("infer", latency_us);
-```
-
-Wi-Fi or MQTT statistics go in through a weak hook, so the component does not
-have to know about your stack:
-
-```c
-void mcu_telemetry_extra_fields(char *out, size_t size)
+void app_main(void)
 {
-    snprintf(out, size, "\"net\":{\"rssi\":%d}", rssi);
+    /* ... your own initialisation ... */
+    ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
+    /* the rest of your code does not change */
 }
 ```
 
-### sdkconfig options worth turning on
+And one name in `<your-project>\main\CMakeLists.txt`, or the header will not
+resolve:
 
-| option | what it adds |
-|---|---|
-| `CONFIG_FREERTOS_USE_TRACE_FACILITY=y` | discovers httpd, mqtt, wifi and other tasks automatically, so you only register the ones the project created |
-| `CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y` | per-core idle share, `custom.idle0_pct` and `custom.idle1_pct`, which is how a stray busy loop shows up |
-| `CONFIG_PM_ENABLE=y` | light sleep residency, `custom.light_sleep_pct`, which answers "did this break low power" without a current meter |
-
-Two things the component handles so the project does not have to. It installs
-the console UART driver and writes frames with `uart_write_bytes` in a retry
-loop, because the console VFS discards bytes when the FIFO is full and a
-truncated frame is worse than no frame. And it counts those retries into
-`custom.uart_tx_retries`, so a serial link that is losing bytes is visible
-instead of mysterious.
-
-Build and flash as usual, then watch for lines that start with `{`:
-
-```powershell
-idf.py -p COM19 flash monitor
+```cmake
+idf_component_register(
+    SRCS "main.c"
+    INCLUDE_DIRS "."
+    REQUIRES driver nvs_flash freertos mcu_telemetry)
 ```
 
-## 3. Describe the project
+If you also set `EXTRA_COMPONENT_DIRS` in the project's own `CMakeLists.txt`,
+guard it. Unguarded, a build attempted before the copy fails with
+"Directory specified in EXTRA_COMPONENT_DIRS doesn't exist", which mentions
+neither the missing component nor the step that was skipped:
 
-One JSON file per project is the whole configuration. It carries the budgets,
-what the metrics mean, and where the baseline lives.
+```cmake
+cmake_minimum_required(VERSION 3.16)
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/components")
+    set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/components")
+endif()
+
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+project(my_app)
+```
+
+### What the agent reports on its own
+
+The three lines are enough for all of this; none of it needs code from you.
+
+| metric | needs |
+|---|---|
+| heap: free now, the smallest it has been, the largest allocatable block | nothing |
+| every task's stack high-water mark | `CONFIG_FREERTOS_USE_TRACE_FACILITY=y`, which also discovers httpd, mqtt and wifi without registering them |
+| idle share per core | `CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y` |
+| light sleep share | `CONFIG_PM_ENABLE=y` |
+| UART retries | nothing; the agent counts them |
+
+Register a task by hand only when you want its stack *total*, since the RTOS
+does not expose it:
+
+```c
+xTaskCreate(control_task, "control", 4096, NULL, 2, NULL);
+mcu_telemetry_register_task("control", 4096);   /* same name as xTaskCreate */
+```
+
+Anything else is a line where the number is computed:
+
+```c
+mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
+mcu_telemetry_histogram_add("infer", latency_us);   /* gives p50, p99, min, max */
+```
+
+## The project file
+
+One JSON file per project. It says what the budgets are, what the metrics mean,
+and where the baseline lives.
 
 ```json
 {
@@ -135,7 +139,6 @@ what the metrics mean, and where the baseline lives.
     {"metric": "heap.min", "min": 100000, "stat": "min"},
     {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
     {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},
-    {"metric": "task.control.stack_free_min", "min": 512, "stat": "min"},
     {"metric": "custom.idle*_pct", "min": 40, "stat": "min"},
     {"metric": "custom.infer_p99_us", "max": 5000, "stat": "max"},
     {"metric": "custom.model_accuracy_pct", "min": 85, "min_samples": 20}
@@ -143,171 +146,155 @@ what the metrics mean, and where the baseline lives.
   "metrics": {
     "custom.model_accuracy_pct": {
       "unit": "%",
-      "description": "rolling accuracy; it reads low right after a boot while the window refills"
+      "description": "rolling accuracy; it reads low right after a boot"
     }
   },
-  "baseline": {
-    "path": "my-project-baseline.json",
-    "max_change_pct": 20
-  }
+  "baseline": {"path": "my-board-baseline.json", "max_change_pct": 20}
 }
 ```
 
-| key | meaning |
+| rule key | meaning |
 |---|---|
-| `metric` | which metric the rule applies to, with `*` as a wildcard |
+| `metric` | which metric, with `*` as a wildcard. The pattern also makes its prefix a name the audit will accept |
 | `min` / `max` | a bound on the value |
-| `stat` | which observation to bound: `last` (default), `min` or `max` |
+| `stat` | which observation to bound: `last` (default), `min`, `max` |
 | `min_rate_per_s` / `max_rate_per_s` | a bound on the slope, in units per second |
 | `min_span_ms` | refuse to judge a slope until the capture holds this much steady state |
-| `min_samples` | skip the metric until it has this many samples, for an average that restarts at boot |
+| `min_samples` | skip the metric until it has this many samples |
 
-There are three verdicts, not two. A rule that could not be judged reports
-**INCOMPLETE** and the exit code is non-zero, because a build cannot be called
-green on the strength of a check nobody carried out.
+There are three verdicts, not two. **PASS**, **FAIL**, and **INCOMPLETE** for a
+rule that could not be judged; the exit code is non-zero for the last two,
+because a build cannot be called green on the strength of a check nobody carried
+out.
 
 Use a slope for anything that is a high-water mark. `heap.min` and
-`stack_free_min` only ever fall, so a floor on them is a statement about how
-long the capture ran as much as about the code: a 100 B/s leak from 145 KB
-needs 450 s to cross a 100 KB floor, so a two minute capture passes the level
-rule with the leak plainly present.
+`stack_free_min` only ever fall, so a floor on them says as much about how long
+the capture ran as about the code: a 100 B/s leak from 145 KB needs 450 s to
+cross a 100 KB floor, which means a two minute capture passes the level rule
+with the leak plainly present.
 
-### The `metrics` block
+### Units and kinds
 
-Units and kinds are inferred from the name, so most projects need nothing here:
-`_us` → microseconds, `_ms` → milliseconds, `_hz` → hertz, `_pct` → percent,
-`_bytes`, `heap.*`, `stack_free` and `stack_total` → bytes, `_samples`,
-`_count`, `_retries` and `_total` → counts. `heap.min` and `stack_free_min` are
-labelled high-water marks, which is the difference between "this number fell"
-and "this number cannot rise".
+Both are inferred from the name, so most projects need nothing. `_us` →
+microseconds, `_ms` → milliseconds, `_hz` → hertz, `_pct` → percent, `_bytes`,
+`heap.*`, `stack_free` and `stack_total` → bytes, `_samples`, `_count`,
+`_retries` and `_total` → counts, `net.rssi` → dBm.
 
-The block is for the names a convention cannot describe, and for saying what a
-number means to a reader who has never seen the project.
+The kind matters as much as the unit. `heap.min` and `stack_free_min` are
+labelled **high-water marks**: they only ever fall, so a drop is the deepest
+point reached since boot and not a trend. Others are instantaneous samples,
+counters since boot, clocks, configured values, or build-time constants. The
+`metrics` block is for the names a convention cannot describe.
 
-## 4. Capture
-
-```powershell
-python -m mcu_insight collect --db captures/board.db --source serial:COM19
-python -m mcu_insight collect --db captures/board.db --source serial:COM19@921600
-python -m mcu_insight collect --db captures/board.db --source file:saved.log
-python -m mcu_insight collect --db captures/board.db --source stdin
-```
-
-The default rate is 115200. The collector ignores every line that is not a
-frame, so the ESP-IDF log stream can share the port. Frames are appended to a
-SQLite file, so a capture can be interrupted and resumed, and every command
-after this reads the file rather than the board.
-
-## 5. Judge
+## Capture
 
 ```powershell
-python -m mcu_insight check --db captures/board.db --config budgets/my-project.json
+cd <tool-repo>
+python -m mcu_insight collect --db captures/board.db --source serial:COM19 --limit 30
 ```
 
-```
-MCU-Insight - resource checks
-database  : captures\board.db
-devices   : my-board
-rules     : 7   metrics matched: 21
-
-Violations (1)
-  ! my-board heap.free: falls at -956.9 per second, slope >= -64/s over >= 60 s of steady state
-
-Changed since baseline (budgets/my-project-baseline.json)
-  heap.min      147,956 ->     50,168   -66.1%
-
-RESULT: FAIL
-```
-
-`--json` emits the same thing machine-readable, and the exit code is 0 for a
-pass, 1 for a failure or an incomplete judgement, 2 for a usage error, so a CI
-job can gate on it. `--top N` limits the change list.
-
-## 6. Record a baseline while the build is good
-
-```powershell
-python -m mcu_insight check --db captures/good.db --config budgets/my-project.json `
-    --save-baseline budgets/my-project-baseline.json --project ..\My-Project
-```
-
-The snapshot records the revision it came from, how many frames and boot
-sessions it covers, how long its steady state lasted, and per metric the last
-value with its extremes, its sample count and its steady slope. That is what
-lets a later comparison say whether a change is real or just a shorter soak.
-
-## 7. Look at it
-
-```powershell
-python -m mcu_insight report --db captures/board.db --config budgets/my-project.json `
-    --map ..\My-Project\build\my_app.map --bin ..\My-Project\build\my_app.bin `
-    --partition 1500K --out docs/report.html
-```
-
-One self-contained HTML file: data inlined, charts hand-written SVG, no server,
-no CDN, no script. It opens from disk and can be published as-is.
-
-| block | what it shows |
+| source | what it reads |
 |---|---|
-| Checks | the verdict, every rule, and any rule that was not judged |
-| Baseline changes | what moved since the snapshot, coloured only when the worrying direction is known |
-| Metric trends | the metrics that moved most, one card each, with each reboot marked |
-| Build resources | flash, static DRAM, IRAM, partition use, top components |
-| Fault injection matrix | with `--faults DIR`, whether the checks caught each injected fault |
+| `serial:COM19` | a board; add `@921600` for a different rate, the default is 115200 |
+| `file:saved.log` | a capture someone else took |
+| `stdin` | a pipe |
 
-## 8. The diagnosis path
+It prints a line per frame and says what it is listening on, so a running capture
+is never mistaken for a hang, and `Ctrl+C` is safe: every frame is committed as
+it arrives, so stopping early keeps what came in. Lines that are not frames are
+ignored, which is why the ESP-IDF log stream can share the port.
 
-Detection is arithmetic; explaining a detection is not. `diagnose` collects
-what is known into a numbered evidence pack and stops there.
+## Judge, baseline, report
 
 ```powershell
-python -m mcu_insight diagnose --db captures/board.db --config budgets/my-project.json `
-    --map ..\My-Project\build\my_app.map --bin ..\My-Project\build\my_app.bin `
-    --partition 1500K --project ..\My-Project --out prompt.txt
+cd <tool-repo>
+python -m mcu_insight check --db captures/board.db --config budgets/my-board.json
+python -m mcu_insight check --db captures/good.db --config budgets/my-board.json --save-baseline budgets/my-board-baseline.json --project <your-project>
+python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html
 ```
 
-Paste `prompt.txt` into any model, save its answer, then check the answer
-against the pack:
+`--json` emits machine-readable output for regression tracking.
+
+The baseline records the revision it came from, how many frames and boot sessions
+it covers, how long its steady state lasted, and per metric the last value with
+its extremes, its sample count and its steady slope. That is what lets a later
+comparison say whether a change is real or just a shorter soak, and the
+diagnosis pack passes those slopes to the model.
+
+The report is one self-contained HTML file: data inlined, charts hand-written
+SVG, no server, no CDN, no script. Five blocks: checks, baseline changes, metric
+trends (each reboot marked), build resources, and a fault matrix when you pass
+`--faults`.
+
+## Diagnosis and audit
 
 ```powershell
+cd <tool-repo>
+python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --project <your-project> --lang zh --out prompt.txt
 python -m mcu_insight audit --pack prompt.txt --answer answer.md
 ```
 
-`audit` fails on a cited evidence id that does not exist, and warns about a
-metric name the pack does not contain and about claims with no citation. The
-pack itself is offline and testable, which is the point: the model call is the
-one step that needs a network, and it is optional.
+`diagnose` collects what is known into a numbered evidence pack and stops there;
+it never calls a model itself. `--lang zh` only changes the language the pack
+asks the answer to be written in -- metric names and `[E12]` ids stay as the tool
+writes them, because they are identifiers.
 
-## 9. Without a board
+`audit` checks the answer back against the pack: a cited id that does not exist
+fails, a metric name the pack does not contain warns, and an uncited claim is
+listed. Exit code 1 means the answer leans on evidence that is not there.
 
-Three commands work on build artefacts alone.
+## Without a board
 
 ```powershell
-python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K
+cd <tool-repo>
+python -m mcu_insight analyze <your-project>\build\<name>.map --bin <your-project>\build\<name>.bin --partition 1500K
 python -m mcu_insight compare build/before.map build/after.map --partition 1500K
-python -m mcu_insight model build/model.tflite
+python -m mcu_insight model <your-project>\build\model.tflite
 ```
 
-`analyze` is what to run when the question is "will it still fit"; `compare`
-answers "what grew" between two builds; `model` reports a TensorFlow Lite
-model's arena, weight size, operator list and quantisation, which is usually
-where a TinyML flash budget actually went.
+The project name is the one inside `project(...)` in `CMakeLists.txt`. To see
+what is actually there:
 
-## 10. In CI
+```powershell
+Get-ChildItem <your-project>\build\*.map, <your-project>\build\*.bin
+```
+
+## In CI
 
 ```yaml
-- run: python -m mcu_insight check --db captures/board.db --config budgets/my-project.json
+- run: cd <tool-repo> && python -m mcu_insight check --db captures/board.db --config budgets/my-board.json
 ```
 
-A capture committed with the build, or recorded from a board on a bench, turns
-the budget file into a gate. `check` fails the job on a violation and also when
-a rule could not be judged, so a capture that is too short to measure a slope
-cannot pass as green.
+`check` fails the job on a violation and also when a rule could not be judged, so
+a capture too short to measure a slope cannot pass as green.
+
+## What it does not do
+
+Worth knowing before you trust it:
+
+* no call graphs or per-function attribution. A heap slope says memory is going
+  somewhere, not which call site takes it;
+* no power measurement. Light sleep residency is a proxy for it, not a meter;
+* **untracked files are not in the diff.** In a brand new project the source is
+  untracked, so `git add` before diagnosing or the pack will contain the metrics
+  without the code;
+* **a pack that is too large is trimmed**, and a metric whose series was dropped
+  says so. The corresponding evidence is genuinely gone from that pack.
+
+## Errors a reader actually hits
+
+| what you see | what it means |
+|---|---|
+| `CMakeLists.txt not found in project directory` | you are not in `<your-project>`; `cd` there first |
+| `Failed to resolve component 'mcu_telemetry'` | the component was never copied; run `sync_firmware.py` |
+| `reading a serial port needs pyserial` | `pip install pyserial`, or capture with the ESP-IDF python |
+| `Directory specified in EXTRA_COMPONENT_DIRS doesn't exist` | likewise, or guard that line as shown above |
 
 ## Where to go next
 
-* `docs/diagnosis-case-study.md`: the same capture diagnosed three times, with
-  three generations of evidence pack, and what each one got right.
-* `docs/telemetry-schema.md`: the frame format, if you would rather publish it
+* `docs/index.html`, `docs/index.zh.html` -- the one page walkthrough.
+* `docs/diagnosis-case-study.md` -- five rounds of evidence packs, and what each
+  one got right.
+* `examples/leaky-sensor-node/` -- a project with real defects to practise on.
+* `docs/telemetry-schema.md` -- the frame format, if you would rather publish it
   from something other than the C agent.
-* `README.md`: the engineering record, including the faults that were injected
-  to prove the checks work and the ones that were initially invisible.

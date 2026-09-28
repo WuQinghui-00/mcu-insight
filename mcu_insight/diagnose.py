@@ -635,6 +635,17 @@ def fit_pack(pack: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> tuple[dict, str]
         key=lambda metric: -len(metric["series_ms"]),
     )
     for metric in droppable:
+        # Halve rather than drop. The shape of a series is usually the point --
+        # round five lost the ability to rule out fragmentation because one
+        # series went -- and half the samples still show the shape. Only a
+        # series already halved down to two points is dropped outright.
+        while len(metric.get("series_ms") or []) > 2:
+            metric["series_ms"] = metric["series_ms"][::2]
+            metric["downsampled"] = True
+            text = render_evidence(work)
+            if len(text.encode("utf-8")) <= max_bytes:
+                work["truncated"] = True
+                return work, text
         metric["series_ms"] = []
         metric["dropped_series"] = True
         text = render_evidence(work)

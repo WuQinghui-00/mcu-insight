@@ -54,6 +54,7 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <li>你的工程 = 你的 ESP-IDF 工程目录，里面有 CMakeLists.txt（就是 idf.py 能跑的那一层）</li>
 </ul>
 <p class="note"><b>最容易搞错的一条：idf.py 在你的工程里跑；mcu_insight 和 sync_firmware.py 在工具仓库里跑。</b></p></section>
+<section><h2>先拿一个已经坏了的工程练手</h2><p><code>examples/leaky-sensor-node/</code> 是一个故意写坏的小固件，README 里有完整命令，也有答案。先拿它把这份指南走一遍，再动你自己的工程——工具应该报出两条违规，其中一条连作者都没打算埋。</p></section>
 <section><h2>你只需要动三个地方，别的都不用改</h2><ul>
 <li>你的工程/main/main.c —— 加 3 行，下面标了每一行放哪</li><li>你的工程/main/CMakeLists.txt —— 加一个名字 mcu_telemetry</li><li>工具仓库/budgets/my-board.json —— 新建这个文件，写你的红线</li>
 </ul></section>
