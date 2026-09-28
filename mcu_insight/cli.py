@@ -10,6 +10,7 @@ from pathlib import Path
 from . import __version__
 from . import checks as checks_mod
 from . import compare as compare_mod
+from . import diagnose as diagnose_mod
 from .analysis import build_report
 from .collector import collect
 from .html_report import build_html, gather_fault_cases
@@ -134,6 +135,27 @@ def build_parser() -> argparse.ArgumentParser:
     report.add_argument("--device", help="device to report on (default: the busiest)")
     report.add_argument("--top", type=int, default=8, help="how many trend cards to draw")
     report.add_argument("--out", default="report.html", help="output file")
+
+    diagnose = sub.add_parser(
+        "diagnose",
+        help="Assemble the evidence for an AI diagnosis (offline with --dry-run).",
+    )
+    diagnose.add_argument("--db", required=True, help="path to the SQLite database")
+    diagnose.add_argument("--config", required=True, help="JSON file with threshold rules")
+    diagnose.add_argument("--baseline", help="baseline JSON (defaults to the one in the config)")
+    diagnose.add_argument("--map", help="path to a .map file, for the build summary")
+    diagnose.add_argument("--bin", dest="binary", help="path to the matching .bin file")
+    diagnose.add_argument("--partition", help="app partition size, e.g. 1500K")
+    diagnose.add_argument("--project", help="firmware project directory: sdkconfig and git state")
+    diagnose.add_argument("--device", help="device to report on (default: the busiest)")
+    diagnose.add_argument("--max-samples", type=int, default=diagnose_mod.DEFAULT_MAX_SAMPLES,
+                          help="samples kept per metric series")
+    diagnose.add_argument("--max-bytes", type=int, default=diagnose_mod.DEFAULT_MAX_BYTES,
+                          help="size budget for the rendered evidence pack")
+    diagnose.add_argument("--dry-run", action="store_true",
+                          help="print the evidence pack and call nothing")
+    diagnose.add_argument("--out", help="write the model prompt (instructions + evidence) here")
+    diagnose.add_argument("--json", action="store_true", help="emit the pack as JSON")
     return parser
 
 
@@ -366,6 +388,64 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_diagnose(args: argparse.Namespace) -> int:
+    """Assemble the evidence. Calling a model is a separate, later step."""
+    db = Path(args.db)
+    if not db.is_file():
+        print(f"error: database not found: {db}", file=sys.stderr)
+        return 2
+    try:
+        config = checks_mod.load_config(args.config)
+    except checks_mod.ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+    baseline_path = Path(args.baseline) if args.baseline else None
+    if baseline_path is None:
+        configured = config.get("baseline", {}).get("path")
+        if configured:
+            candidate = Path(configured)
+            if not candidate.is_absolute():
+                candidate = Path(args.config).parent / candidate
+            baseline_path = candidate if candidate.is_file() else None
+
+    build = None
+    partition = None
+    if args.map:
+        if not _check_file(Path(args.map), "map file"):
+            return 2
+        build = build_report(Path(args.map), Path(args.binary) if args.binary else None)
+        partition = parse_size(args.partition) if args.partition else None
+
+    baseline = checks_mod.load_baseline(baseline_path) if baseline_path else None
+
+    with Store(db) as store:
+        report = checks_mod.check_store(store, config, baseline, baseline_path)
+        pack = diagnose_mod.gather_evidence(
+            store, report, database=str(db), device=args.device, config_path=args.config,
+            build=build, partition=partition, project_dir=args.project,
+            max_samples=args.max_samples,
+        )
+
+    pack, text = diagnose_mod.fit_pack(pack, args.max_bytes)
+
+    if not args.dry_run:
+        print("error: the model call is not wired yet; run with --dry-run to read the "
+              "evidence pack, or add --out FILE to keep the prompt", file=sys.stderr)
+        return 2
+
+    if args.out:
+        prompt = diagnose_mod.build_prompt(text)
+        Path(args.out).write_text(prompt, encoding="utf-8")
+        print(f"prompt written: {args.out} ({len(prompt):,} chars)")
+
+    if args.json:
+        print(json.dumps(pack, indent=2))
+    else:
+        print(text, end="")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -378,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
         "simulate": cmd_simulate,
         "check": cmd_check,
         "report": cmd_report,
+        "diagnose": cmd_diagnose,
     }.get(args.command)
     if handler is None:
         parser.error(f"unknown command: {args.command}")

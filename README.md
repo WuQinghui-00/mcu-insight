@@ -12,8 +12,8 @@ The tool answers questions a code review cannot answer:
 
 Stages 1 to 4 are in place: build-time resource accounting, TinyML model
 analysis, runtime telemetry from the device, and threshold/baseline checks with
-fault injection evidence. Next is the diagnosis layer: assemble the evidence
-pack first, then optionally hand it to a model.
+fault injection evidence, and the offline half of the diagnosis layer: an
+evidence pack plus the prompt. Calling a model is the remaining step.
 
 ## Usage
 
@@ -326,6 +326,40 @@ the first sample with the last would report a 25 KB "leak" that is really the
 first second of the run. The checks are unaffected and still cover every frame,
 so nothing is hidden from the pass/fail verdict.
 
+## Diagnosis: the evidence pack
+
+Detection is arithmetic; explaining a detection is not. `diagnose` collects
+what is *known* into one bounded, numbered pack and stops there. It never
+invents a fact and never calls a model on its own, which is what makes the
+whole step testable offline:
+
+```powershell
+python -m mcu_insight diagnose `
+    --db captures/fault-heap.db `
+    --config budgets/signal.json `
+    --map build/signal_processing_system.map `
+    --project ../ESP32-Signal-Processing-System-github `
+    --partition 1500K `
+    --dry-run --out prompt.txt
+```
+
+The pack carries the violations next to the rule text, the full series for the
+metrics that matter, a summary of every other metric, the build's flash and RAM
+numbers, the sdkconfig keys that can move a resource figure, and the git state
+of the tree that produced the firmware. Every line is numbered `[E12]` so an
+answer can be checked rather than trusted.
+
+Two rules keep it useful. The pack is trimmed to a size budget, dropping series
+for metrics nothing flagged, because evidence that cannot be read in one go is
+evidence that gets ignored. And a series that never moves collapses to one
+line, since twenty-one identical readings cost the same as one and say less.
+
+A change is labelled `worse`, `better` or `moved` using the same direction
+rules as the HTML report, so a shorter uptime or a lower sample count is not
+presented to the model as a regression. The prompt that `--out` writes asks for
+an evidence id behind every claim, for an explicit "the evidence cannot tell
+these apart" when that is the honest answer, and for the smallest change plus
+the command that would verify it.
 ## Fault injection matrix
 
 `tools/fault_matrix.py` injects one fault at a time through the firmware switch

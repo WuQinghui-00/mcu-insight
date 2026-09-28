@@ -182,6 +182,53 @@ def load_baseline(path: str | Path) -> dict[str, dict[str, float]]:
     return json.loads(baseline_path.read_text(encoding="utf-8"))
 
 
+#: Which direction of change is the worrying one, matched on metric-name
+#: substrings. A regression is not the same thing as a decrease: free heap
+#: falling is bad, inference latency falling is good, and uptime is neither.
+#: Anything unmatched is reported as "changed" with no verdict rather than
+#: being guessed at, because a wrong red badge is worse than a neutral one.
+_REGRESSION_DIRECTION = (
+    ("stack_free", "down"),  # less stack left = closer to an overflow
+    ("heap.min", "down"),  # less heap left = closer to a failed allocation
+    ("heap.free", "down"),
+    ("largest", "down"),  # the biggest free block shrinking = fragmentation
+    ("arena_free", "down"),
+    ("arena_used", "up"),
+    ("headroom", "down"),
+    ("idle", "down"),  # idle share falling = more CPU stolen by something else
+    ("sleep", "down"),
+    ("accuracy", "down"),
+    ("acc_", "down"),  # per-class accuracy, e.g. acc_triangle_pct
+    ("confidence", "down"),
+    ("infer_p", "up"),  # a rising latency percentile = slower inference
+    ("infer_min", "up"),
+    ("infer_mean", "up"),
+    ("infer_max", "up"),
+    ("latency", "up"),
+    ("jitter", "up"),
+    ("drift", "up"),
+    ("reset_count", "up"),
+)
+
+
+def regression_direction(metric: str) -> str | None:
+    """Return "up"/"down" when a rise/fall in *metric* is the bad direction."""
+    name = metric.lower()
+    for hint, bad_way in _REGRESSION_DIRECTION:
+        if hint in name:
+            return bad_way
+    return None
+
+
+def change_verdict(metric: str, delta: float) -> str:
+    """Classify a delta as "bad", "ok", or "" when the direction is unknown."""
+    bad_way = regression_direction(metric)
+    if bad_way is None or delta == 0:
+        return ""
+    worse_off = delta > 0 if bad_way == "up" else delta < 0
+    return "bad" if worse_off else "ok"
+
+
 def check_store(
     store: Store,
     config: dict,

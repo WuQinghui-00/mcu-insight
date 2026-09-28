@@ -42,6 +42,7 @@ class DirectionTest(unittest.TestCase):
             "task.main.stack_free_min",
             "custom.arena_free",
             "custom.headroom_bytes",
+            "heap.largest",
             "custom.idle0_pct",
             "custom.light_sleep_pct",
             "custom.model_accuracy_pct",
@@ -74,7 +75,6 @@ class DirectionTest(unittest.TestCase):
             "custom.model_class",
             "custom.model_expected",
             "seq",
-            "heap.largest",
         ):
             with self.subTest(metric=metric):
                 self.assertIsNone(regression_direction(metric))
