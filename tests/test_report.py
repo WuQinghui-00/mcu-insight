@@ -17,11 +17,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mcu_insight.checks import check_store, load_config  # noqa: E402
 from mcu_insight.html_report import (  # noqa: E402
+    BOOT_WARMUP_MS,
+    boot_boundaries,
+    capture_axis,
     build_html,
     change_verdict,
     gather_fault_cases,
     regression_direction,
     sparkline,
+    steady_samples,
 )
 from mcu_insight.simulator import iter_frames  # noqa: E402
 from mcu_insight.store import Store  # noqa: E402
@@ -156,6 +160,64 @@ class ReportTest(unittest.TestCase):
         )
         for label, detected, expected in cases:
             self.assertEqual(expected, detected, label)
+
+
+class BootHandlingTest(unittest.TestCase):
+    """A capture can span a reset, and a boot is not steady state."""
+
+    def test_boot_boundaries_find_every_restart(self):
+        points = [(0.0, 1.0), (5000.0, 2.0), (1000.0, 3.0), (6000.0, 4.0), (500.0, 5.0)]
+        self.assertEqual([2, 4], boot_boundaries(points))
+
+    def test_start_up_samples_are_skipped(self):
+        points = [(0.0, 10.0), (5_000.0, 20.0), (20_000.0, 30.0)]
+        begin, steady = steady_samples(points, warmup_ms=10_000.0)
+        self.assertEqual(0, begin)
+        self.assertEqual([30.0], [v for _, v in steady])
+
+    def test_statistics_cover_the_newest_session_only(self):
+        points = [(0.0, 1.0), (60_000.0, 2.0), (2_000.0, 3.0), (30_000.0, 4.0)]
+        begin, steady = steady_samples(points, warmup_ms=10_000.0)
+        self.assertEqual(2, begin)
+        self.assertEqual([4.0], [v for _, v in steady])
+
+    def test_a_short_session_falls_back_to_everything_it_has(self):
+        points = [(0.0, 1.0), (60_000.0, 2.0), (2_000.0, 3.0)]
+        begin, steady = steady_samples(points, warmup_ms=10_000.0)
+        self.assertEqual(2, begin)
+        self.assertEqual([3.0], [v for _, v in steady])
+
+    def test_capture_axis_keeps_counting_across_a_reset(self):
+        points = [(0.0, 1.0), (50_000.0, 2.0), (2_000.0, 3.0), (7_000.0, 4.0)]
+        self.assertEqual([0.0, 50_000.0, 52_000.0, 57_000.0], capture_axis(points))
+    def test_default_warmup_is_ten_seconds(self):
+        self.assertEqual(10_000.0, BOOT_WARMUP_MS)
+
+
+class RebootMarkerTest(ReportTest):
+    def test_capture_across_a_reset_is_marked_on_the_page(self):
+        store = Store(self.dir / "reboot.db")
+        self._stores.append(store)
+        for line in iter_frames("steady", count=8, seed=1):
+            store.add(parse_frame(line))
+        # A second run that restarts at uptime 0 is what a reset looks like.
+        for line in iter_frames("steady", count=8, seed=1, start_uptime_ms=0.0):
+            store.add(parse_frame(line))
+        device = store.devices()[0]
+        self.assertEqual(1, len(store.reboot_frames(device)))
+
+        report = check_store(store, self.config([{"metric": "heap.min", "min": 1000, "stat": "min"}]))
+        page = build_html(store, report)
+        self.assertIn("stroke-dasharray", page)
+        self.assertIn("1 reboot(s) in this capture", page)
+        self.assertIn("newest boot session", page)
+
+    def test_clean_capture_has_no_marker_and_no_reboot_note(self):
+        store = self.store_for("steady", count=8)
+        report = check_store(store, self.config([{"metric": "heap.min", "min": 1000, "stat": "min"}]))
+        page = build_html(store, report)
+        self.assertNotIn("stroke-dasharray", page)
+        self.assertNotIn("reboot(s) in this capture", page)
 
 
 if __name__ == "__main__":

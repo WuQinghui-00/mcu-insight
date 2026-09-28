@@ -299,7 +299,7 @@ no server and no CDN, and it can be committed or published as-is.
 
 ```powershell
 python -m mcu_insight report `
-    --db captures/fault-off.db `
+    --db captures/signal-reboot.db `
     --config budgets/signal.json `
     --map build/signal_processing_system.map `
     --bin build/signal_processing_system.bin `
@@ -315,6 +315,16 @@ label) are listed without a verdict rather than guessed at. The fault captures a
 re-checked against `fault_matrix.json` instead of the application budget, because
 the accuracy rule reads low during the first seconds after a boot and would
 otherwise flag the clean baseline as a regression.
+
+A capture can span a reboot, which is normal while a board is being reflashed or
+reset. The trend cards therefore draw a continuous time axis, mark every reset
+with a dashed line, and compute their statistics from the newest boot session
+only, skipping the first ten seconds after it because start-up is still
+allocating Wi-Fi and MQTT buffers. That matters most for high-water-mark
+metrics: `heap.min` is at its post-boot peak right after a reset, so comparing
+the first sample with the last would report a 25 KB "leak" that is really the
+first second of the run. The checks are unaffected and still cover every frame,
+so nothing is hidden from the pass/fail verdict.
 
 ## Fault injection matrix
 

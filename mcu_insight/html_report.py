@@ -74,6 +74,53 @@ def change_verdict(metric: str, delta: float) -> str:
     worse_off = delta > 0 if bad_way == "up" else delta < 0
     return "bad" if worse_off else "ok"
 
+#: Samples taken inside this window after a boot are start-up, not steady state:
+#: Wi-Fi, MQTT and the telemetry task are still allocating, so a "historical
+#: minimum" metric such as heap.min is still sitting at its post-boot peak.
+#: Those samples stay on the chart but are kept out of the card statistics.
+BOOT_WARMUP_MS = 10_000.0
+
+
+def boot_boundaries(points: list[tuple[float, float]]) -> list[int]:
+    """Indices where a new boot session starts, i.e. uptime went backwards."""
+    return [i for i in range(1, len(points)) if points[i][0] < points[i - 1][0]]
+
+
+def steady_delta(points: list[tuple[float, float]]) -> float:
+    """Change across the steady part of the newest boot session."""
+    _, steady = steady_samples(points)
+    return steady[-1][1] - steady[0][1]
+
+
+def capture_axis(points: list[tuple[float, float]]) -> list[float]:
+    """x values that keep increasing across a reset.
+
+    ``uptime_ms`` restarts at zero after a reboot, so plotting it directly makes
+    the line jump backwards and puts the reboot marker at the left edge next to
+    the start of the first session. Carrying the elapsed time over keeps the
+    chart readable and puts the marker where the reset actually happened.
+    """
+    axis = []
+    offset = 0.0
+    previous: float | None = None
+    for uptime, _ in points:
+        if previous is not None and uptime < previous:
+            offset += previous
+        axis.append(uptime + offset)
+        previous = uptime
+    return axis
+
+
+def steady_samples(
+    points: list[tuple[float, float]], warmup_ms: float = BOOT_WARMUP_MS
+) -> tuple[int, list[tuple[float, float]]]:
+    """Return (start of the newest boot session, samples that are steady state)."""
+    starts = [0] + boot_boundaries(points)
+    begin = starts[-1]
+    session = points[begin:]
+    steady = [p for p in session if p[0] - session[0][0] >= warmup_ms]
+    return begin, steady or session
+
 STYLE = """
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
@@ -114,8 +161,9 @@ def _esc(value) -> str:
 
 
 def sparkline(points: list[tuple[float, float]], width: int = 300, height: int = 56,
-              stroke: str = "#3b82f6") -> str:
-    """A tiny line chart as inline SVG."""
+              stroke: str = "#3b82f6",
+              markers: list[float] | tuple[float, ...] = ()) -> str:
+    """A tiny line chart as inline SVG, with optional dashed vertical markers."""
     if len(points) < 2:
         return f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}"></svg>'
     xs = [p[0] for p in points]
@@ -123,17 +171,43 @@ def sparkline(points: list[tuple[float, float]], width: int = 300, height: int =
     span_x = (max(xs) - min(xs)) or 1.0
     span_y = (max(ys) - min(ys)) or 1.0
     pad = 4
+
+    def scale_x(value: float) -> float:
+        return pad + (value - min(xs)) / span_x * (width - 2 * pad)
+
     coords = []
     for x, y in points:
-        px = pad + (x - min(xs)) / span_x * (width - 2 * pad)
+        px = scale_x(x)
         py = height - pad - (y - min(ys)) / span_y * (height - 2 * pad)
         coords.append(f"{px:.1f},{py:.1f}")
+    marks = "".join(
+        f'<line x1="{scale_x(mark):.1f}" y1="0" x2="{scale_x(mark):.1f}" y2="{height}"'
+        ' stroke="#9aa3af" stroke-width="1" stroke-dasharray="3 3"/>'
+        for mark in markers
+    )
     return (
         f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" '
         f'preserveAspectRatio="none" role="img">'
+        f'{marks}'
         f'<polyline fill="none" stroke="{stroke}" stroke-width="1.6" '
         f'stroke-linejoin="round" points="{" ".join(coords)}"/></svg>'
     )
+
+def _trend_note(store: Store, device: str) -> str:
+    """Explain how to read the cards, including how boot handling was applied."""
+    note = (
+        '<p class="note">Cards are scaled to their own range, so compare shapes, not '
+        "slopes. Card statistics cover the newest boot session and skip the first "
+        f"{BOOT_WARMUP_MS / 1000:.0f} s after boot, while start-up is still allocating; "
+        "the checks above still cover every frame.</p>"
+    )
+    reboots = len(store.reboot_frames(device)) if device else 0
+    if reboots:
+        note += (
+            f'<p class="note">{reboots} reboot(s) in this capture - '
+            "the dashed line marks each one.</p>"
+        )
+    return note
 
 
 def _trend_cards(store: Store, device: str, metrics: list[str], top: int) -> str:
@@ -142,21 +216,23 @@ def _trend_cards(store: Store, device: str, metrics: list[str], top: int) -> str
         points = store.series(device, metric)
         if not points:
             continue
-        values = [v for _, v in points]
-        first, last = values[0], values[-1]
-        delta = last - first
+        axis = capture_axis(points)
+        chart = list(zip(axis, [v for _, v in points]))
+        marks = [axis[i] for i in boot_boundaries(points)]
+        _, steady = steady_samples(points)
+        values = [v for _, v in steady]
+        delta = values[-1] - values[0]
         colour = "#b42318" if change_verdict(metric, delta) == "bad" else "#3b82f6"
         cards.append(
             '<div class="card">'
             f'<h3>{_esc(metric)}</h3>'
-            f'<div class="value">{last:,.0f}</div>'
+            f'<div class="value">{points[-1][1]:,.0f}</div>'
             f'<div class="range">min {min(values):,.0f} · max {max(values):,.0f} · '
             f'change {delta:+,.0f}</div>'
-            f'{sparkline(points, stroke=colour)}'
+            f"{sparkline(chart, stroke=colour, markers=marks)}"
             "</div>"
         )
     return f'<div class="grid">{"".join(cards)}</div>' if cards else "<p class=note>no data</p>"
-
 
 def _checks_block(report: CheckReport) -> str:
     rows = []
@@ -242,16 +318,27 @@ def _fault_block(cases) -> str:
 
 
 def _pick_trends(store: Store, device: str, report: CheckReport, top: int) -> list[str]:
+    """Cards worth drawing, ranked by how far the metric moved in steady state."""
     stats = store.metric_stats(device)
-    wanted: list[str] = []
-    for metric in stats:
-        if any(hint in metric for hint in TREND_HINTS):
-            wanted.append(metric)
-    ranked = sorted(wanted, key=lambda m: -abs(stats[m].change))
+    wanted = [metric for metric in stats if any(hint in metric for hint in TREND_HINTS)]
+    moved = {}
+    for metric in wanted:
+        points = store.series(device, metric)
+        moved[metric] = abs(steady_delta(points)) if points else 0.0
+    ranked = sorted(wanted, key=lambda metric: -moved[metric])
     for violation in report.violations:
         if violation.metric in stats and violation.metric not in ranked:
             ranked.insert(0, violation.metric)
     return ranked[:top]
+
+def _subtitle_span(store: Store, device: str, seconds: float) -> str:
+    """How much time the capture covers, without calling a reboot uptime."""
+    if not device:
+        return f"{seconds:,.0f} s of uptime"
+    reboots = len(store.reboot_frames(device))
+    if reboots:
+        return f"{reboots + 1} boot sessions"
+    return f"{seconds:,.0f} s of uptime"
 
 
 def build_html(store: Store, report: CheckReport, build: ImageReport | None = None,
@@ -270,10 +357,11 @@ def build_html(store: Store, report: CheckReport, build: ImageReport | None = No
         f"<style>{STYLE}</style></head><body><div class=wrap>",
         "<h1>MCU-Insight</h1>",
         f'<p class=sub>{_esc(target)} · fw {_esc(firmware or "-")} · '
-        f'{store.frame_count(target)} frames · {seconds:,.0f} s of uptime</p>',
+        f'{store.frame_count(target)} frames · {_subtitle_span(store, target, seconds)}</p>',
         "<section><h2>Checks</h2>", _checks_block(report), "</section>",
         "<section><h2>Baseline changes</h2>", _changes_block(report), "</section>",
         "<section><h2>Metric trends</h2>",
+        _trend_note(store, target),
         _trend_cards(store, target, _pick_trends(store, target, report, top), top),
         "</section>",
     ]
