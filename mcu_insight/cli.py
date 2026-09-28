@@ -156,6 +156,15 @@ def build_parser() -> argparse.ArgumentParser:
                           help="print the evidence pack and call nothing")
     diagnose.add_argument("--out", help="write the model prompt (instructions + evidence) here")
     diagnose.add_argument("--json", action="store_true", help="emit the pack as JSON")
+
+    audit = sub.add_parser(
+        "audit",
+        help="Check a model answer against an evidence pack: ids, names, citations.",
+    )
+    audit.add_argument("--answer", required=True, help="file containing the answer to check")
+    audit.add_argument("--pack", required=True,
+                       help="the prompt file written by diagnose --out")
+    audit.add_argument("--json", action="store_true", help="emit the result as JSON")
     return parser
 
 
@@ -429,21 +438,46 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 
     pack, text = diagnose_mod.fit_pack(pack, args.max_bytes)
 
-    if not args.dry_run:
-        print("error: the model call is not wired yet; run with --dry-run to read the "
-              "evidence pack, or add --out FILE to keep the prompt", file=sys.stderr)
+    if not args.dry_run and not args.out:
+        print("error: this build does not call a model. Use --out FILE to write the prompt "
+              "and paste it into the model yourself, or --dry-run to read the evidence pack.",
+              file=sys.stderr)
         return 2
 
     if args.out:
         prompt = diagnose_mod.build_prompt(text)
         Path(args.out).write_text(prompt, encoding="utf-8")
         print(f"prompt written: {args.out} ({len(prompt):,} chars)")
+        print(f"next: paste it into a model, save the answer, then run")
+        print(f"      mcu-insight audit --pack {args.out} --answer <answer file>")
+        if not args.dry_run:
+            return 0
 
     if args.json:
         print(json.dumps(pack, indent=2))
     else:
         print(text, end="")
     return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    """Check the answer, not the model."""
+    pack_path = Path(args.pack)
+    answer_path = Path(args.answer)
+    for path, label in ((pack_path, "pack"), (answer_path, "answer")):
+        if not path.is_file():
+            print(f"error: {label} file not found: {path}", file=sys.stderr)
+            return 2
+
+    result = diagnose_mod.audit_answer(
+        answer_path.read_text(encoding="utf-8", errors="replace"),
+        pack_path.read_text(encoding="utf-8", errors="replace"),
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(diagnose_mod.render_audit(result), end="")
+    return 0 if result["ok"] else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -459,6 +493,7 @@ def main(argv: list[str] | None = None) -> int:
         "check": cmd_check,
         "report": cmd_report,
         "diagnose": cmd_diagnose,
+        "audit": cmd_audit,
     }.get(args.command)
     if handler is None:
         parser.error(f"unknown command: {args.command}")

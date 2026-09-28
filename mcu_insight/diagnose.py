@@ -10,6 +10,7 @@ which is also what makes it testable.
 from __future__ import annotations
 
 import copy
+import re
 import subprocess
 from pathlib import Path
 
@@ -335,6 +336,121 @@ def fit_pack(pack: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> tuple[dict, str]
         text = render_evidence(work)
     return work, text
 
+
+#: A citation as the prompt asks for it, or the model simply uses: [E12].
+CITATION = re.compile(r"\[E(\d+)\]")
+
+#: Dotted lowercase tokens such as heap.min or task.wifi.stack_free_min.
+DOTTED = re.compile(r"\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+\b")
+
+
+def pack_evidence_ids(evidence_text: str) -> set[str]:
+    """Every id the pack actually defines."""
+    return {f"E{int(match)}" for match in CITATION.findall(evidence_text)}
+
+
+def pack_metric_families(evidence_text: str) -> set[str]:
+    """First segment of every metric name in the pack: heap, task, custom, ..."""
+    families = set()
+    for name in pack_metric_names(evidence_text):
+        families.add(name.split(".")[0])
+    return families
+
+
+def pack_metric_names(evidence_text: str) -> set[str]:
+    names = set()
+    for line in evidence_text.splitlines():
+        for marker in ("metric ", "series "):
+            position = line.find(marker)
+            if position < 0:
+                continue
+            token = line[position + len(marker):].split(":")[0].strip()
+            if token:
+                names.add(token)
+    return names
+
+
+BULLET = re.compile(r"^(?:[-*+]|\d+[.)])\s+")
+
+
+def _claims(answer: str) -> list[str]:
+    """Split an answer into claims. A claim is a bullet, not a line.
+
+    Markdown wraps a single sentence across several lines, so judging one line
+    at a time reports an uncited claim whenever a citation happens to land on
+    the next line.
+    """
+    claims: list[str] = []
+    in_code = False
+    for raw in answer.splitlines():
+        line = raw.strip()
+        if line.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code or not line:
+            continue
+        if BULLET.match(line):
+            claims.append(BULLET.sub("", line))
+        elif line.endswith(":") and len(line) < 80:
+            continue  # a heading, not a claim
+        elif claims:
+            claims[-1] = claims[-1] + " " + line
+        else:
+            claims.append(line)
+    return [claim for claim in claims if len(claim) >= 25]
+
+
+def audit_answer(answer: str, evidence_text: str) -> dict:
+    """Check an answer against the pack instead of trusting it.
+
+    Three failure modes are worth catching, and all three are mechanical:
+    an id that the pack never defines, a metric name that does not exist, and
+    a claim with no citation at all.
+    """
+    known_ids = pack_evidence_ids(evidence_text)
+    known_names = pack_metric_names(evidence_text)
+    families = pack_metric_families(evidence_text)
+
+    cited = [f"E{int(match)}" for match in CITATION.findall(answer)]
+    unknown_ids = sorted({citation for citation in cited if citation not in known_ids})
+
+    mentioned = {token for token in DOTTED.findall(answer) if token.split(".")[0] in families}
+    unknown_metrics = sorted(
+        token for token in mentioned if token not in known_names and token not in families
+    )
+
+    uncited = [claim[:120] for claim in _claims(answer) if not CITATION.search(claim)]
+
+    return {
+        "ok": not unknown_ids and not unknown_metrics,
+        "citations": {"total": len(cited), "unique": len(set(cited))},
+        "unknown_ids": unknown_ids,
+        "unknown_metrics": unknown_metrics,
+        "uncited_lines": uncited,
+        "known_ids": len(known_ids),
+    }
+
+
+def render_audit(result: dict) -> str:
+    lines = ["MCU-INSIGHT ANSWER AUDIT"]
+    lines.append(f"citations   : {result['citations']['unique']} distinct of"
+                 f" {result['citations']['total']} in the pack ({result['known_ids']} available)")
+    if result["unknown_ids"]:
+        lines.append("unknown id  : " + ", ".join(result["unknown_ids"])
+                     + "  <- not in the pack, so the claim cannot be checked")
+    else:
+        lines.append("unknown id  : none")
+    if result["unknown_metrics"]:
+        lines.append("unknown name: " + ", ".join(result["unknown_metrics"])
+                     + "  <- no such metric in the pack")
+    else:
+        lines.append("unknown name: none")
+    lines.append(f"uncited line: {len(result['uncited_lines'])} (a warning, not an error)")
+    for line in result["uncited_lines"]:
+        lines.append(f"    {line}")
+    lines.append("")
+    lines.append("RESULT: " + ("OK" if result["ok"] else "the answer cites evidence that does not exist"))
+    return "\n".join(lines) + "\n"
 
 PROMPT = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
 on an ESP32-class device.

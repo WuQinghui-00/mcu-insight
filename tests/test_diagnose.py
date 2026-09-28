@@ -25,10 +25,12 @@ from mcu_insight.checks import (  # noqa: E402
 )
 from mcu_insight.cli import main  # noqa: E402
 from mcu_insight.diagnose import (  # noqa: E402
+    audit_answer,
     build_prompt,
     collect_changes,
     fit_pack,
     gather_evidence,
+    pack_evidence_ids,
     read_sdkconfig,
     render_evidence,
     sample_series,
@@ -219,7 +221,7 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             code = main(["diagnose", "--db", str(self.database()), "--config", str(config)])
         self.assertEqual(2, code)
-        self.assertIn("not wired yet", stderr.getvalue())
+        self.assertIn("does not call a model", stderr.getvalue())
 
     def test_out_writes_the_prompt(self):
         config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
@@ -232,5 +234,78 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
         self.assertIn("Cite an evidence id", target.read_text(encoding="utf-8"))
 
 
+class AuditTest(TempWorkspace, unittest.TestCase):
+    """The tool checks the answer, not the model."""
+
+    def pack_text(self) -> str:
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 135000, "stat": "min"}],
+                             count=12)
+        return render_evidence(pack)
+
+    def test_fabricated_evidence_id_is_caught(self):
+        result = audit_answer("The heap fell [E11] and the cause is obvious [E99].",
+                              self.pack_text())
+        self.assertEqual(["E99"], result["unknown_ids"])
+        self.assertFalse(result["ok"])
+
+    def test_invented_metric_name_is_caught(self):
+        result = audit_answer("The custom.heap_fragmentation_index is over budget [E2].",
+                              self.pack_text())
+        self.assertEqual(["custom.heap_fragmentation_index"], result["unknown_metrics"])
+        self.assertFalse(result["ok"])
+
+    def test_source_file_names_are_not_mistaken_for_metrics(self):
+        result = audit_answer("The allocation is in main.c and dac_wave.c [E2].", self.pack_text())
+        self.assertEqual([], result["unknown_metrics"])
+        self.assertTrue(result["ok"])
+
+    def test_a_wrapped_bullet_is_one_claim(self):
+        answer = ("- The heap drains 1.5 KB per loop because a payload buffer is never\n"
+                  "  released, which matches the falling largest block [E11].\n"
+                  "- The transmitter task keeps a pointer past the end of the buffer.\n")
+        result = audit_answer(answer, self.pack_text())
+        self.assertTrue(result["ok"])
+        self.assertEqual(1, len(result["uncited_lines"]))
+        self.assertIn("transmitter task", result["uncited_lines"][0])
+
+    def test_a_fully_cited_answer_passes(self):
+        text = self.pack_text()
+        ids = sorted(pack_evidence_ids(text), key=lambda item: int(item[1:]))
+        answer = (f"- The capture is described by [{ids[0]}] and the rules by [{ids[4]}],\n"
+                  f"  {ids[5]}.\n")
+        result = audit_answer(answer, text)
+        self.assertTrue(result["ok"])
+        self.assertEqual([], result["uncited_lines"])
+
+    def test_headings_and_short_lines_are_not_claims(self):
+        answer = "Root cause\n-----------\n- The heap fell [E11] as the series shows.\n"
+        result = audit_answer(answer, self.pack_text())
+        self.assertEqual([], result["uncited_lines"])
+
+
+class AuditCommandTest(TempWorkspace, unittest.TestCase):
+    def test_out_needs_no_dry_run_and_points_at_the_audit(self):
+        self.store_for("heap-leak", count=10, name="cli.db")
+        config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
+        target = self.dir / "prompt.txt"
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = main(["diagnose", "--db", str(self.dir / "cli.db"),
+                         "--config", str(config), "--out", str(target)])
+        self.assertEqual(0, code)
+        self.assertIn("mcu-insight audit --pack", buffer.getvalue())
+        self.assertIn("EVIDENCE", target.read_text(encoding="utf-8"))
+
+    def test_audit_command_fails_on_a_fabricated_id(self):
+        pack = self.dir / "prompt.txt"
+        pack.write_text("- The capture is described by [E1] and more.\n", encoding="utf-8")
+        answer = self.dir / "answer.md"
+        answer.write_text("- The leak is real [E1] and also caused by [E404] here.\n",
+                          encoding="utf-8")
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = main(["audit", "--pack", str(pack), "--answer", str(answer)])
+        self.assertEqual(1, code)
+        self.assertIn("E404", buffer.getvalue())
 if __name__ == "__main__":
     unittest.main()

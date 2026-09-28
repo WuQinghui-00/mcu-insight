@@ -13,7 +13,7 @@ The tool answers questions a code review cannot answer:
 Stages 1 to 4 are in place: build-time resource accounting, TinyML model
 analysis, runtime telemetry from the device, and threshold/baseline checks with
 fault injection evidence, and the offline half of the diagnosis layer: an
-evidence pack plus the prompt. Calling a model is the remaining step.
+evidence pack, the prompt, and the audit that checks an answer against it. Calling a model is the remaining step.
 
 ## Usage
 
@@ -360,6 +360,22 @@ presented to the model as a regression. The prompt that `--out` writes asks for
 an evidence id behind every claim, for an explicit "the evidence cannot tell
 these apart" when that is the honest answer, and for the smallest change plus
 the command that would verify it.
+## Auditing the answer
+
+The manual path has one obvious hole: nothing checks the answer. `audit` closes
+it mechanically and without a model:
+
+```powershell
+python -m mcu_insight audit --pack prompt.txt --answer answer.md
+```
+
+Three things are checked. Every `[E12]` the answer cites has to exist in the
+pack, so a fabricated citation is caught instead of believed. A dotted name
+belonging to a metric family the pack knows has to be a metric the pack
+contains, which catches an invented metric while leaving `main.c` alone. And
+every claim with no citation is listed as a warning, counting a wrapped bullet
+as one claim rather than one per line. Exit code 1 means the answer leans on
+evidence that does not exist.
 ## Fault injection matrix
 
 `tools/fault_matrix.py` injects one fault at a time through the firmware switch
