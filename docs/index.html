@@ -51,8 +51,22 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <div class="card"><h3>What is the device doing</h3><p class="note">Stack high-water marks per task, the smallest free heap and the largest free block, per-core idle share, latency percentiles, sleep residency: whatever the firmware publishes.</p></div>
 <div class="card"><h3>Did the change make it worse</h3><p class="note">Budget rules that bound a value or a slope, a comparison against a stored baseline, and an evidence pack when something needs explaining.</p></div>
 </div></section>
-<section><h2>Four steps on a new project</h2><div class=grid><div class="card"><div class="step">1</div><div class="where">run in mcu-insight\</div><h3>Copy the device agent in</h3><p class="note">One ESP-IDF component. ESP-IDF wants components inside the project tree, so this copies it there and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><p class="note">then build and flash it as usual, from the firmware project:</p><pre class="run">cd ..\My-Project
-idf.py -p COM19 flash monitor</pre></div><div class="card"><div class="step">2</div><div class="where">run in mcu-insight\</div><h3>Capture</h3><p class="note">Frames are appended to a SQLite file, so every command after this reads the file instead of the board. Log lines on the same port are ignored.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+<section><h2>Four steps on a new project</h2><div class="card"><div class="step">1</div><div class="where">run in mcu-insight\</div><h3>Copy the device agent in</h3><p class="note">One ESP-IDF component. ESP-IDF wants components inside the project tree, so this copies it there and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">the project before</p><pre class="out">My-Project\
+  CMakeLists.txt
+  main\main.c</pre></div><div><p class="note">the same project after</p><pre class="out">My-Project\
+  CMakeLists.txt
+  components\            &lt;- created by the command
+    mcu_telemetry\       &lt;- created by the command
+      CMakeLists.txt
+      include/mcu_telemetry.h
+      mcu_telemetry.c
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing here is created by hand. The command makes components\ and mcu_telemetry\ if they are missing. The argument has to be the project root, the directory that holds CMakeLists.txt; given anything else it stops and says it does not look like an ESP-IDF project.</p><p class="note" style="margin-top:12px">One line in the project's main/CMakeLists.txt, or the header will not resolve:</p><pre class="run"># main/CMakeLists.txt
+idf_component_register(
+    SRCS &quot;main.c&quot;
+    INCLUDE_DIRS &quot;.&quot;
+    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note" style="margin-top:12px">and then build and flash, from the firmware project:</p><pre class="run">cd ..\My-Project
+idf.py -p COM19 flash monitor</pre></div>
+<div class=grid style="margin-top:14px"><div class="card"><div class="step">2</div><div class="where">run in mcu-insight\</div><h3>Capture</h3><p class="note">Frames are appended to a SQLite file, so every command after this reads the file instead of the board. Log lines on the same port are ignored.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices

@@ -51,8 +51,22 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <div class="card"><h3>设备实际在干什么</h3><p class="note">每个任务的栈高水位、堆最小空闲和最大可分配块、每核空闲占比、延迟分位数、睡眠占比——固件报什么就能看什么。</p></div>
 <div class="card"><h3>这次改动有没有让它变差</h3><p class="note">可以约束数值、也可以约束斜率的预算规则，与基线快照的对比，以及需要解释时给模型用的证据包。</p></div>
 </div></section>
-<section><h2>新工程上的四步</h2><div class=grid><div class="card"><div class="step">1</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>把设备端 agent 拷进去</h3><p class="note">就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，所以这条命令把它拷过去并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><p class="note">然后在固件工程里照常编译烧写：</p><pre class="run">cd ..\My-Project
-idf.py -p COM19 flash monitor</pre></div><div class="card"><div class="step">2</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>采集</h3><p class="note">遥测帧追加进一个 SQLite 文件，之后所有命令读文件而不是读板子。同一个串口上的日志行会被自动忽略。</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - telemetry summary
+<section><h2>新工程上的四步</h2><div class="card"><div class="step">1</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>把设备端 agent 拷进去</h3><p class="note">就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，所以这条命令把它拷过去并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">运行前的工程</p><pre class="out">My-Project\
+  CMakeLists.txt
+  main\main.c</pre></div><div><p class="note">运行后的同一个工程</p><pre class="out">My-Project\
+  CMakeLists.txt
+  components\            &lt;- 由这条命令创建
+    mcu_telemetry\       &lt;- 由这条命令创建
+      CMakeLists.txt
+      include/mcu_telemetry.h
+      mcu_telemetry.c
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">这里没有任何东西需要你手工建。目录不存在时，命令会自己创建 components\ 和 mcu_telemetry\。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层；给别的目录它会停下并提示 does not look like an ESP-IDF project。</p><p class="note" style="margin-top:12px">还要在工程的 main/CMakeLists.txt 里加一个名字，不然头文件找不到：</p><pre class="run"># main/CMakeLists.txt
+idf_component_register(
+    SRCS &quot;main.c&quot;
+    INCLUDE_DIRS &quot;.&quot;
+    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note" style="margin-top:12px">然后在固件工程里编译烧写：</p><pre class="run">cd ..\My-Project
+idf.py -p COM19 flash monitor</pre></div>
+<div class=grid style="margin-top:14px"><div class="card"><div class="step">2</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>采集</h3><p class="note">遥测帧追加进一个 SQLite 文件，之后所有命令读文件而不是读板子。同一个串口上的日志行会被自动忽略。</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices

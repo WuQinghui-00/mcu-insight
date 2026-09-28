@@ -191,7 +191,12 @@ TEXT = {
         "where_fw": "My-Project\\   your firmware, next to the tool",
         "where_fw_top": "  components\\\n    mcu_telemetry\\   <- step 1 writes this directory",
         "where_fw_bottom": "  main\\main.c      <- the five lines from step 1\n  build\\           .map and .bin are read from here",
-        "s1_flash": "then build and flash it as usual, from the firmware project:",
+        "s1_before": "the project before",
+        "s1_after": "the same project after",
+        "s1_created": "created by the command",
+        "s1_create_d": "Nothing here is created by hand. The command makes components\\ and mcu_telemetry\\ if they are missing. The argument has to be the project root, the directory that holds CMakeLists.txt; given anything else it stops and says it does not look like an ESP-IDF project.",
+        "s1_cmake_d": "One line in the project's main/CMakeLists.txt, or the header will not resolve:",
+        "s1_flash": "and then build and flash, from the firmware project:",
         "s4_open": "The command writes report.html into the directory you ran it from. Double-click it, or open it from the file manager. The report linked here was made the same way, from the capture committed in this repository:",
         "s1_t": "Copy the device agent in",
         "s1_d": "One ESP-IDF component. ESP-IDF wants components inside the project "
@@ -263,7 +268,12 @@ TEXT = {
         "where_fw": "My-Project\\   你的固件工程，和工具仓库并排",
         "where_fw_top": "  components\\\n    mcu_telemetry\\   ← 第一步拷贝到这里",
         "where_fw_bottom": "  main\\main.c      ← 第一步加的那五行\n  build\\           .map 和 .bin 从这里读",
-        "s1_flash": "然后在固件工程里照常编译烧写：",
+        "s1_before": "运行前的工程",
+        "s1_after": "运行后的同一个工程",
+        "s1_created": "由这条命令创建",
+        "s1_create_d": "这里没有任何东西需要你手工建。目录不存在时，命令会自己创建 components\\ 和 mcu_telemetry\\。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层；给别的目录它会停下并提示 does not look like an ESP-IDF project。",
+        "s1_cmake_d": "还要在工程的 main/CMakeLists.txt 里加一个名字，不然头文件找不到：",
+        "s1_flash": "然后在固件工程里编译烧写：",
         "s4_open": "这条命令会把 report.html 写到你运行命令的那个目录里。双击它，或者从文件管理器打开。下面链接的这份报告就是这么来的，用的是本仓库里已提交的那次采集：",
         "s1_t": "把设备端 agent 拷进去",
         "s1_d": "就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，"
@@ -321,14 +331,34 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         body.append("</div>")
         return "".join(body)
 
-    steps = "".join([
+    component_tree = "\n".join(f"      {name}" for name in facts["component_files"])
+    before_tree = "My-Project\\\n  CMakeLists.txt\n  main\\main.c"
+    after_tree = ("My-Project\\\n  CMakeLists.txt\n"
+                  f"  components\\            <- {c['s1_created']}\n"
+                  f"    mcu_telemetry\\       <- {c['s1_created']}\n"
+                  + component_tree
+                  + "\n  main\\main.c")
+
+    step1 = (
         '<div class="card"><div class="step">1</div>'
         + f'<div class="where">{c["run_here"]}</div>'
         + f'<h3>{c["s1_t"]}</h3><p class="note">{c["s1_d"]}</p>'
         + pre("python tools/sync_firmware.py ..\\My-Project", "run")
-        + f'<p class="note">{c["s1_flash"]}</p>'
+        + '<div class="grid" style="margin-top:12px">'
+        + f'<div><p class="note">{c["s1_before"]}</p>' + pre(before_tree) + "</div>"
+        + f'<div><p class="note">{c["s1_after"]}</p>' + pre(after_tree) + "</div>"
+        + "</div>"
+        + f'<p class="note" style="margin-top:12px">{c["s1_create_d"]}</p>'
+        + f'<p class="note" style="margin-top:12px">{c["s1_cmake_d"]}</p>'
+        + pre('# main/CMakeLists.txt\nidf_component_register(\n    SRCS "main.c"\n'
+              '    INCLUDE_DIRS "."\n    REQUIRES driver nvs_flash freertos mcu_telemetry)',
+              "run")
+        + f'<p class="note" style="margin-top:12px">{c["s1_flash"]}</p>'
         + pre("cd ..\\My-Project\nidf.py -p COM19 flash monitor", "run")
-        + "</div>",
+        + "</div>"
+    )
+
+    steps = "".join([
         card("2", c["s2_t"], c["s2_d"],
              "python -m mcu_insight collect --db captures/board.db --source serial:COM19",
              facts["summary"], c["run_here"]),
@@ -378,7 +408,8 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         f'<div class="card"><h3>{c["q2_t"]}</h3><p class="note">{c["q2_d"]}</p></div>',
         f'<div class="card"><h3>{c["q3_t"]}</h3><p class="note">{c["q3_d"]}</p></div>',
         "</div></section>",
-        f"<section><h2>{c['steps']}</h2><div class=grid>{steps}</div>",
+        f"<section><h2>{c['steps']}</h2>{step1}",
+        f'<div class=grid style="margin-top:14px">{steps}</div>',
         f'<p class="note" style="margin-top:16px">{c["s4_open"]} '
         f'<a href="report-demo.html">docs/report-demo.html</a></p></section>',
         f"<section><h2>{c['where']}</h2><p class=\"note\">{c['where_d']}</p><div class=grid>",

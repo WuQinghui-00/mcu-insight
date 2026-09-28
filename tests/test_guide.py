@@ -70,6 +70,12 @@ class GuidePageTest(unittest.TestCase):
         self.assertIn("mcu_telemetry.c", page)
         self.assertIn("step 1 writes this directory", page)
 
+    def test_step_one_shows_what_the_command_creates_and_the_cmake_line(self):
+        page = render("en", FACTS)
+        self.assertIn("created by the command", page)
+        self.assertIn("components\\", page)
+        self.assertIn("REQUIRES driver nvs_flash freertos mcu_telemetry", page)
+        self.assertIn("does not look like an ESP-IDF project", page)
     def test_every_step_says_which_directory_it_belongs_in(self):
         page = render("en", FACTS)
         self.assertEqual(4, page.count('class="where"'), "one badge per step")
