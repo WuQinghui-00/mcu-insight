@@ -10,11 +10,20 @@ The tool answers questions a code review cannot answer:
 
 ## Status
 
-Stages 1 to 4 are in place: build-time resource accounting, TinyML model
-analysis, runtime telemetry from the device, and threshold/baseline checks with
-fault injection evidence, and the offline half of the diagnosis layer: an
-evidence pack, the prompt, and the audit that checks an answer against it. `docs/diagnosis-case-study.md` walks the same
-capture through three generations of evidence pack. Calling a model is the remaining step.
+The tool is usable end to end: build-time resource accounting, TinyML model
+analysis, runtime telemetry from the device, threshold and baseline checks with
+fault injection evidence, and the diagnosis layer in its offline form -- an
+evidence pack, the prompt generated from it, and the audit that checks an
+answer against it.
+
+Calling a model is deliberately left to the user: `diagnose` writes the prompt,
+you paste it wherever you like, and `audit` checks what comes back. Nothing in
+that path needs a network connection or an API key, which is also what makes it
+testable.
+
+* `docs/using-it.md` -- how to put this on a new project.
+* `docs/diagnosis-case-study.md` -- one capture, three generations of evidence
+  pack, and what each one got right.
 
 ## Getting started
 
