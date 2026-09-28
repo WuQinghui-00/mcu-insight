@@ -35,9 +35,9 @@ There is also a one-page guide in two languages, built from real runs of the
 tool. Open [`docs/index.html`](docs/index.html) (English) or
 [`docs/index.zh.html`](docs/index.zh.html) (中文) by double-clicking the file.
 GitHub shows HTML as source, so to read it as a page either open the file locally
-or use the published copy: `.github/workflows/pages.yml` deploys `docs/` to
-GitHub Pages on every push to `main`, and turns Pages on the first time it runs.
-The site is then `https://<user>.github.io/<repo>/`.
+or publish it: **Settings -> Pages -> Source: Deploy from a branch -> `main` / `docs`**,
+which is two dropdowns and no workflow. The site is then
+`https://<user>.github.io/<repo>/` (中文 at `/index.zh.html`).
 
 ```powershell
 python -m venv .venv
