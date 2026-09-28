@@ -141,6 +141,28 @@ python -m mcu_insight diagnose --db captures/fault-heap.db --config budgets/sign
 python -m mcu_insight audit --pack docs/prompts/round-3.txt --answer docs/answers/round-3.md
 ```
 
+## A fourth round: a real defect, not an injected one
+
+The three rounds above diagnose a capture whose fault was injected through a
+switch. That proves the checks fire, not that they fire on ordinary code.
+`examples/leaky-sensor-node/` is an ordinary small firmware with two defects in
+it, and the guide was followed on it by someone who had not written any of it.
+
+Both were found. `sample_task` allocates 128 bytes per sample and never releases
+them: the free heap falls 85,800 bytes over 130 seconds, a slope of -660 B/s.
+The floor rule stayed quiet, because the heap was still at 185 KB -- only the
+slope rule had anything to say, which is the argument for having both. The
+second defect was never planted: `format_task` keeps a 1,800 byte array on a
+3,072 byte stack and ends up with 56 bytes of headroom once `snprintf` is
+counted.
+
+The answer is worth reading for its arithmetic. It derived 660 B/s from 3,300
+bytes per five second frame, divided by the 25 samples in one frame, and
+concluded that 132 bytes per sample against a 128 byte payload is four bytes of
+allocator overhead -- correcting the rate the source comment claimed.
+
+The run is kept: `captures/leaky-sensor-node.db`, `docs/report-leaky-sensor-node.html`,
+`docs/prompts/round-4.txt`, `docs/answers/round-4.md`.
 ## What it demonstrates
 
 The tool's value is not that it reads the code; a model can read the code. The
