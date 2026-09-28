@@ -335,6 +335,27 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertFalse(trimmed["truncated"])
         self.assertEqual(render_evidence(pack), text)
 
+    def test_a_trimmed_constant_metric_does_not_crash_the_renderer(self):
+        # The bug a reader hit: fit_pack drops series to stay inside the budget
+        # but keeps the flags, and "constant at <nothing>" raised IndexError.
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}],
+                             count=6)
+        metric = pack["metrics"][0]
+        metric["constant"] = True
+        metric["series_ms"] = []
+        metric["dropped_series"] = True
+        text = render_evidence(pack)
+        self.assertIn("dropped to fit the size budget", text)
+
+    def test_trimming_leaves_constant_series_alone(self):
+        # A constant series renders as one line, so dropping it saves nothing
+        # and loses the most useful thing about it.
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 0, "stat": "min"}],
+                             count=40, max_samples=40)
+        for metric in pack["metrics"]:
+            metric["constant"] = True
+        trimmed, _ = fit_pack(pack, max_bytes=4_000)
+        self.assertTrue(all(metric["series_ms"] for metric in trimmed["metrics"]))
     def test_the_prompt_asks_for_a_short_answer(self):
         prompt = build_prompt("[E1] x")
         self.assertIn("400 words", prompt)

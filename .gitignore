@@ -4,3 +4,8 @@ __pycache__/
 .venv/
 build/
 dist/
+
+# What following the guide leaves in the repository root. Archive a round
+# deliberately, under docs/, rather than sweeping it in with git add -A.
+/prompt*.txt
+/answer*.md

@@ -556,7 +556,9 @@ def render_evidence(pack: dict) -> str:
             line += f"; {metric['description']}"
         add(line)
         series = metric.get("series_ms") or []
-        if metric.get("constant"):
+        # Trimmed to fit the budget, a metric keeps its flags but loses its
+        # samples; saying "constant at <nothing>" used to crash here.
+        if series and metric.get("constant"):
             # A flat series costs the same as a moving one and says far less.
             add(f"series {metric['name']}: constant at {series[0][1]:,.0f} across"
                 f" {len(series)} samples")
@@ -628,7 +630,8 @@ def fit_pack(pack: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> tuple[dict, str]
     flagged = {violation["metric"] for violation in work["verdict"]["violations"]}
     droppable = sorted(
         [metric for metric in work["metrics"]
-         if metric["name"] not in flagged and metric.get("series_ms")],
+         if metric["name"] not in flagged and metric.get("series_ms")
+         and not metric.get("constant")],
         key=lambda metric: -len(metric["series_ms"]),
     )
     for metric in droppable:
