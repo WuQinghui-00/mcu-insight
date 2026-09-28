@@ -299,7 +299,7 @@ no server and no CDN, and it can be committed or published as-is.
 
 ```powershell
 python -m mcu_insight report `
-    --db captures/signal-reboot.db `
+    --db captures/fault-off.db `
     --config budgets/signal.json `
     --map build/signal_processing_system.map `
     --bin build/signal_processing_system.bin `
