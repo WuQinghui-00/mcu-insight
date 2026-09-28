@@ -14,6 +14,7 @@ from mcu_insight.checks import (  # noqa: E402
     ConfigError,
     check_store,
     load_baseline,
+    load_baseline_meta,
     load_config,
     parse_rules,
     save_baseline,
@@ -53,6 +54,21 @@ class CheckTest(unittest.TestCase):
         return path
 
     # -- rules ---------------------------------------------------------
+    def test_a_baseline_can_record_which_revision_it_describes(self):
+        store = self.store_for("steady")
+        path = self.dir / "baseline.json"
+        save_baseline(store, path, meta={"revision": "abc123 a subject"})
+        self.assertEqual({"revision": "abc123 a subject"}, load_baseline_meta(path))
+        loaded = load_baseline(path)
+        self.assertNotIn("_meta", loaded)
+        self.assertIn("esp32-light-monitor", loaded)
+
+    def test_a_baseline_without_meta_reports_nothing(self):
+        store = self.store_for("steady")
+        path = self.dir / "plain.json"
+        save_baseline(store, path)
+        self.assertEqual({}, load_baseline_meta(path))
+        self.assertEqual({}, load_baseline_meta(self.dir / "absent.json"))
     def test_wildcards_match_every_task(self) -> None:
         rules = parse_rules(
             {"rules": [{"metric": "task.*.stack_free_min", "min": 1}]}

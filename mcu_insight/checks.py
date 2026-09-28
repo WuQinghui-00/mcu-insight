@@ -163,9 +163,17 @@ def parse_rules(config: dict) -> list[Rule]:
     return rules
 
 
-def save_baseline(store: Store, path: str | Path) -> dict:
-    """Snapshot the latest value of every metric, per device."""
-    snapshot: dict[str, dict[str, float]] = {}
+def save_baseline(store: Store, path: str | Path, meta: dict | None = None) -> dict:
+    """Snapshot the latest value of every metric, per device.
+
+    ``meta`` records what the snapshot describes -- the revision it was taken
+    from, above all. A baseline that only carries numbers can say that
+    something changed but not what it changed from, which is the difference
+    between "the heap fell 66%" and "the heap fell 66% since this commit".
+    """
+    snapshot: dict = {}
+    if meta:
+        snapshot["_meta"] = dict(meta)
     for device in store.devices():
         stats = store.metric_stats(device)
         snapshot[device] = {name: entry.last for name, entry in stats.items()}
@@ -179,7 +187,21 @@ def load_baseline(path: str | Path) -> dict[str, dict[str, float]]:
     baseline_path = Path(path)
     if not baseline_path.is_file():
         raise ConfigError(f"baseline not found: {baseline_path}")
-    return json.loads(baseline_path.read_text(encoding="utf-8"))
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    # Keys starting with an underscore are the baseline talking about itself,
+    # not devices. Comparisons iterate over the devices they found in the
+    # capture, so this was already harmless; being explicit keeps it that way.
+    return {key: value for key, value in data.items() if not key.startswith("_")}
+
+
+def load_baseline_meta(path: str | Path) -> dict:
+    """What the baseline recorded about itself, empty when it recorded nothing."""
+    baseline_path = Path(path)
+    if not baseline_path.is_file():
+        return {}
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    meta = data.get("_meta")
+    return meta if isinstance(meta, dict) else {}
 
 
 #: Which direction of change is the worrying one, matched on metric-name

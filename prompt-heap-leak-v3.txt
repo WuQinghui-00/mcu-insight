@@ -1,0 +1,411 @@
+You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
+on an ESP32-class device.
+
+Answer from the evidence below and nothing else:
+
+1. Cite an evidence id such as [E12] for every factual claim. A claim with no id
+   is a guess, and a guess is worse than saying nothing.
+2. If the evidence cannot separate two explanations, say so, and name the
+   measurement that would separate them.
+3. Do not invent metric names, values, files or configuration keys. If the pack
+   does not contain something you need, ask for it.
+4. The checks only say *that* a budget was missed. Explain *why*, using the
+   series, the build numbers and the diff.
+
+Answer in this shape:
+
+- Root cause: the single most likely one, a confidence level, and the evidence
+  ids behind it.
+- Alternatives: what else could produce this, and which observation would rule
+  each one out.
+- Fix: the smallest change that addresses the root cause.
+- Verification: which command to run afterwards and which metric should move,
+  and by roughly how much.
+
+EVIDENCE
+--------
+MCU-INSIGHT EVIDENCE PACK
+[E1] device esp32-signal-processor (firmware dev)
+[E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
+[E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
+[E4] provenance captured 2026-09-28 by tools/fault_matrix.py --port COM19
+[E5] budget file budgets\signal.json
+[E6] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
+[E7] VIOLATION heap.min: 50168 is below 100000
+[E8] rule heap.min min >= 100000
+[E9] rule task.main.stack_free_min min >= 384
+[E10] rule task.*.stack_free_min min >= 256
+[E11] rule custom.idle*_pct min >= 60
+[E12] rule custom.infer_p99_us max <= 5000
+[E13] rule custom.model_accuracy_pct >= 85
+[E14] changed (worse) heap.min: baseline 147,956 -> now 50,168 (-66.1%)
+[E15] changed (worse) heap.free: baseline 148,168 -> now 50,372 (-66.0%)
+[E16] changed (moved) custom.infer_samples: baseline 114 -> now 49 (-57.0%)
+[E17] changed (moved) uptime_ms: baseline 248,337 -> now 108,420 (-56.3%)
+[E18] changed (worse) heap.largest: baseline 110,592 -> now 49,152 (-55.6%)
+[E19] changed (better) custom.infer_max_us: baseline 2,272 -> now 1,348 (-40.7%)
+[E20] changed (worse) task.uart_cmd.stack_free_min: baseline 2,892 -> now 2,068 (-28.5%)
+[E21] changed (moved) custom.inference_us: baseline 1,086 -> now 1,335 (+22.9%)
+[E22] changed (moved) custom.model_class: baseline 0 -> now 2
+[E23] changed (moved) custom.model_expected: baseline 0 -> now 2
+[E24] metric heap.min (B, high-water mark, monotonic since boot): last 50,168, min 50,168, max 169,500 over 21 samples
+[E25] series heap.min [B]: 3,378ms=169,500, 8,380ms=144,580, 13,390ms=140,640, 18,390ms=136,480, 23,390ms=130,424, 28,390ms=126,092, 33,390ms=121,988, 38,390ms=115,832, 43,391ms=111,728, 48,410ms=107,624, 58,420ms=97,364, 63,420ms=93,260, 68,420ms=87,104, 73,420ms=83,000, 78,420ms=78,896, 83,420ms=72,740, 88,420ms=68,636, 93,420ms=64,532, 98,420ms=58,376, 103,420ms=54,272, 108,420ms=50,168
+[E26] metric heap.free (B, instantaneous sample): last 50,372, min 50,372, max 169,500 over 21 samples
+[E27] series heap.free [B]: 3,378ms=169,500, 8,380ms=144,820, 13,390ms=140,704, 18,390ms=136,580, 23,390ms=130,424, 28,390ms=126,332, 33,390ms=122,228, 38,390ms=116,072, 43,391ms=111,924, 48,410ms=107,856, 58,420ms=97,596, 63,420ms=93,492, 68,420ms=87,344, 73,420ms=83,204, 78,420ms=79,136, 83,420ms=72,980, 88,420ms=68,876, 93,420ms=64,772, 98,420ms=58,616, 103,420ms=54,512, 108,420ms=50,372
+[E28] metric heap.largest (B, instantaneous sample): last 49,152, min 49,152, max 110,592 over 21 samples
+[E29] series heap.largest [B]: 3,378ms=110,592, 8,380ms=110,592, 13,390ms=110,592, 18,390ms=110,592, 23,390ms=110,592, 28,390ms=110,592, 33,390ms=110,592, 38,390ms=110,592, 43,391ms=110,592, 48,410ms=106,496, 58,420ms=94,208, 63,420ms=90,112, 68,420ms=86,016, 73,420ms=81,920, 78,420ms=77,824, 83,420ms=69,632, 88,420ms=65,536, 93,420ms=63,488, 98,420ms=57,344, 103,420ms=53,248, 108,420ms=49,152
+[E30] metric task.telemetry.stack_free_min (B, high-water mark, monotonic since boot): last 2,208, min 2,208, max 2,432 over 21 samples
+[E31] series task.telemetry.stack_free_min [B]: 3,378ms=2,432, 8,380ms=2,400, 13,390ms=2,400, 18,390ms=2,336, 23,390ms=2,336, 28,390ms=2,304, 33,390ms=2,256, 38,390ms=2,256, 43,391ms=2,256, 48,410ms=2,256, 58,420ms=2,256, 63,420ms=2,208, 68,420ms=2,208, 73,420ms=2,208, 78,420ms=2,208, 83,420ms=2,208, 88,420ms=2,208, 93,420ms=2,208, 98,420ms=2,208, 103,420ms=2,208, 108,420ms=2,208
+[E32] metric task.main.stack_free_min (B, high-water mark, monotonic since boot): last 444, min 444, max 444 over 21 samples
+[E33] series task.main.stack_free_min: constant at 444 across 21 samples
+[E34] metric task.IDLE0.stack_free_min (B, high-water mark, monotonic since boot): last 920, min 920, max 1,032 over 21 samples
+[E35] series task.IDLE0.stack_free_min [B]: 3,378ms=1,032, 8,380ms=1,032, 13,390ms=920, 18,390ms=920, 23,390ms=920, 28,390ms=920, 33,390ms=920, 38,390ms=920, 43,391ms=920, 48,410ms=920, 58,420ms=920, 63,420ms=920, 68,420ms=920, 73,420ms=920, 78,420ms=920, 83,420ms=920, 88,420ms=920, 93,420ms=920, 98,420ms=920, 103,420ms=920, 108,420ms=920
+[E36] metric task.IDLE1.stack_free_min (B, high-water mark, monotonic since boot): last 916, min 916, max 1,028 over 21 samples
+[E37] series task.IDLE1.stack_free_min [B]: 3,378ms=1,028, 8,380ms=1,028, 13,390ms=1,028, 18,390ms=1,028, 23,390ms=1,028, 28,390ms=1,028, 33,390ms=1,028, 38,390ms=1,028, 43,391ms=1,028, 48,410ms=916, 58,420ms=916, 63,420ms=916, 68,420ms=916, 73,420ms=916, 78,420ms=916, 83,420ms=916, 88,420ms=916, 93,420ms=916, 98,420ms=916, 103,420ms=916, 108,420ms=916
+[E38] metric task.tiT.stack_free_min (B, high-water mark, monotonic since boot): last 2,584, min 2,584, max 2,584 over 21 samples
+[E39] series task.tiT.stack_free_min: constant at 2,584 across 21 samples
+[E40] metric task.mqtt_task.stack_free_min (B, high-water mark, monotonic since boot): last 3,708, min 3,708, max 3,996 over 21 samples
+[E41] series task.mqtt_task.stack_free_min [B]: 3,378ms=3,996, 8,380ms=3,996, 13,390ms=3,756, 18,390ms=3,756, 23,390ms=3,756, 28,390ms=3,756, 33,390ms=3,756, 38,390ms=3,756, 43,391ms=3,708, 48,410ms=3,708, 58,420ms=3,708, 63,420ms=3,708, 68,420ms=3,708, 73,420ms=3,708, 78,420ms=3,708, 83,420ms=3,708, 88,420ms=3,708, 93,420ms=3,708, 98,420ms=3,708, 103,420ms=3,708, 108,420ms=3,708
+[E42] metric task.fault_busy.stack_free_min (B, high-water mark, monotonic since boot): last 1,544, min 1,544, max 1,544 over 21 samples
+[E43] series task.fault_busy.stack_free_min: constant at 1,544 across 21 samples
+[E44] metric task.ipc1.stack_free_min (B, high-water mark, monotonic since boot): last 504, min 504, max 504 over 21 samples
+[E45] series task.ipc1.stack_free_min: constant at 504 across 21 samples
+[E46] metric task.wifi.stack_free_min (B, high-water mark, monotonic since boot): last 4,340, min 4,340, max 4,468 over 21 samples
+[E47] series task.wifi.stack_free_min [B]: 3,378ms=4,468, 8,380ms=4,468, 13,390ms=4,468, 18,390ms=4,468, 23,390ms=4,468, 28,390ms=4,468, 33,390ms=4,468, 38,390ms=4,468, 43,391ms=4,468, 48,410ms=4,468, 58,420ms=4,468, 63,420ms=4,468, 68,420ms=4,340, 73,420ms=4,340, 78,420ms=4,340, 83,420ms=4,340, 88,420ms=4,340, 93,420ms=4,340, 98,420ms=4,340, 103,420ms=4,340, 108,420ms=4,340
+[E48] metric task.esp_timer.stack_free_min (B, high-water mark, monotonic since boot): last 1,968, min 1,968, max 3,312 over 21 samples
+[E49] series task.esp_timer.stack_free_min [B]: 3,378ms=3,312, 8,380ms=1,968, 13,390ms=1,968, 18,390ms=1,968, 23,390ms=1,968, 28,390ms=1,968, 33,390ms=1,968, 38,390ms=1,968, 43,391ms=1,968, 48,410ms=1,968, 58,420ms=1,968, 63,420ms=1,968, 68,420ms=1,968, 73,420ms=1,968, 78,420ms=1,968, 83,420ms=1,968, 88,420ms=1,968, 93,420ms=1,968, 98,420ms=1,968, 103,420ms=1,968, 108,420ms=1,968
+[E50] metric task.httpd.stack_free_min (B, high-water mark, monotonic since boot): last 7,284, min 7,284, max 7,284 over 21 samples
+[E51] series task.httpd.stack_free_min: constant at 7,284 across 21 samples
+[E52] metric task.sys_evt.stack_free_min (B, high-water mark, monotonic since boot): last 612, min 612, max 820 over 21 samples
+[E53] series task.sys_evt.stack_free_min [B]: 3,378ms=820, 8,380ms=612, 13,390ms=612, 18,390ms=612, 23,390ms=612, 28,390ms=612, 33,390ms=612, 38,390ms=612, 43,391ms=612, 48,410ms=612, 58,420ms=612, 63,420ms=612, 68,420ms=612, 73,420ms=612, 78,420ms=612, 83,420ms=612, 88,420ms=612, 93,420ms=612, 98,420ms=612, 103,420ms=612, 108,420ms=612
+[E54] metric task.uart_cmd.stack_free_min (B, high-water mark, monotonic since boot): last 2,068, min 2,068, max 2,884 over 21 samples
+[E55] series task.uart_cmd.stack_free_min [B]: 3,378ms=2,884, 8,380ms=2,884, 13,390ms=2,068, 18,390ms=2,068, 23,390ms=2,068, 28,390ms=2,068, 33,390ms=2,068, 38,390ms=2,068, 43,391ms=2,068, 48,410ms=2,068, 58,420ms=2,068, 63,420ms=2,068, 68,420ms=2,068, 73,420ms=2,068, 78,420ms=2,068, 83,420ms=2,068, 88,420ms=2,068, 93,420ms=2,068, 98,420ms=2,068, 103,420ms=2,068, 108,420ms=2,068
+[E56] metric task.ipc0.stack_free_min (B, high-water mark, monotonic since boot): last 496, min 496, max 496 over 21 samples
+[E57] series task.ipc0.stack_free_min: constant at 496 across 21 samples
+[E58] metric task.Tmr Svc.stack_free_min (B, high-water mark, monotonic since boot): last 1,548, min 1,548, max 1,548 over 21 samples
+[E59] series task.Tmr Svc.stack_free_min: constant at 1,548 across 21 samples
+[E60] metric custom.model_accuracy_pct (%, instantaneous sample): last 100, min 100, max 100 over 20 samples; rolling accuracy of the on-device classifier; it reads low right after a boot while the window refills
+[E61] series custom.model_accuracy_pct: constant at 100 across 20 samples
+[E62] metric custom.arena_used_bytes (B, instantaneous sample): last 1,316, min 1,316, max 1,316 over 20 samples; tensor arena the interpreter actually uses
+[E63] series custom.arena_used_bytes: constant at 1,316 across 20 samples
+[E64] metric custom.idle1_pct (%, instantaneous sample): last 99, min 99, max 100 over 20 samples
+[E65] series custom.idle1_pct [%]: 8,380ms=99, 13,390ms=99, 18,390ms=99, 23,390ms=100, 28,390ms=99, 33,390ms=100, 38,390ms=100, 43,391ms=100, 48,410ms=99, 58,420ms=99, 63,420ms=100, 68,420ms=99, 73,420ms=100, 78,420ms=99, 83,420ms=99, 88,420ms=100, 93,420ms=99, 98,420ms=100, 103,420ms=100, 108,420ms=99
+[E66] metric custom.idle0_pct (%, instantaneous sample): last 93, min 90, max 94 over 20 samples
+[E67] series custom.idle0_pct [%]: 8,380ms=90, 13,390ms=93, 18,390ms=93, 23,390ms=91, 28,390ms=93, 33,390ms=94, 38,390ms=91, 43,391ms=93, 48,410ms=93, 58,420ms=94, 63,420ms=94, 68,420ms=91, 73,420ms=93, 78,420ms=93, 83,420ms=91, 88,420ms=93, 93,420ms=94, 98,420ms=91, 103,420ms=93, 108,420ms=93
+[E68] metric custom.infer_max_us (us, instantaneous sample): last 1,348, min 1,347, max 1,348 over 20 samples
+[E69] series custom.infer_max_us [us]: 8,380ms=1,347, 13,390ms=1,347, 18,390ms=1,347, 23,390ms=1,347, 28,390ms=1,347, 33,390ms=1,347, 38,390ms=1,347, 43,391ms=1,347, 48,410ms=1,348, 58,420ms=1,348, 63,420ms=1,348, 68,420ms=1,348, 73,420ms=1,348, 78,420ms=1,348, 83,420ms=1,348, 88,420ms=1,348, 93,420ms=1,348, 98,420ms=1,348, 103,420ms=1,348, 108,420ms=1,348
+[E70] metric custom.infer_p50_us (us, instantaneous sample): last 1,000, min 1,000, max 1,000 over 20 samples; inference latency, median of the recent window
+[E71] series custom.infer_p50_us: constant at 1,000 across 20 samples
+[E72] metric custom.infer_p99_us (us, instantaneous sample): last 1,250, min 1,250, max 1,250 over 20 samples; inference latency, 99th percentile of the recent window
+[E73] series custom.infer_p99_us: constant at 1,250 across 20 samples
+[E74] metric custom.acc_sine_pct (%, instantaneous sample): last 100, min 100, max 100
+[E75] metric custom.acc_square_pct (%, instantaneous sample): last 100, min 0, max 100
+[E76] metric custom.acc_steady_pct (%, instantaneous sample): last 100, min 100, max 100
+[E77] metric custom.acc_switch_pct (%, instantaneous sample): last 0, min 0, max 0
+[E78] metric custom.acc_triangle_pct (%, instantaneous sample): last 100, min 0, max 100
+[E79] metric custom.infer_mean_us (us, instantaneous sample): last 1,110, min 1,104, max 1,271
+[E80] metric custom.infer_min_us (us, instantaneous sample): last 945, min 945, max 1,165
+[E81] metric custom.infer_samples (count, counter since boot): last 49, min 3, max 49
+[E82] metric custom.inference_us (us, instantaneous sample): last 1,335, min 945, max 1,343
+[E83] metric custom.model_class (instantaneous sample): last 2, min 0, max 2
+[E84] metric custom.model_confidence_pct (%, instantaneous sample): last 81, min 81, max 99
+[E85] metric custom.model_expected (instantaneous sample): last 2, min 0, max 2
+[E86] metric custom.sample_rate_hz (Hz, build-time constant): last 1,000, min 1,000, max 1,000; ADC sampling rate fixed at build time; it does not follow the demo waveform frequency
+[E87] metric custom.uart_tx_retries (count, counter since boot): last 0, min 0, max 0; UART writes that needed a retry after the driver fix
+[E88] metric task.main.stack_total (B, configured stack size): last 3,584, min 3,584, max 3,584
+[E89] metric task.uart_cmd.stack_total (B, configured stack size): last 4,096, min 4,096, max 4,096
+[E90] metric uptime_ms (ms, clock since boot): last 108,420, min 3,378, max 108,420
+[E91] build flash 1,065,728 B of a 1,536,000 B partition (69.4%), DRAM 47,952/180,736 B, IRAM 103,294 B
+[E92] build top components: esp-idf/esp_wifi 206,644 B; esp-idf/mbedtls 161,627 B; esp-idf/lwip 103,216 B; esp-idf/esp_app_format 99,307 B; toolchain 73,547 B; esp-idf/wpa_supplicant 62,663 B; esp-idf/esp_phy 48,292 B; esp-idf/espressif__esp-tflite-micro 32,231 B
+[E93] config D:\ESP32-FAE\ESP32-Signal-Processing-System-github\sdkconfig: CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y; CONFIG_COMPILER_OPTIMIZATION_ASSERTION_LEVEL=2; CONFIG_COMPILER_OPTIMIZATION_DEBUG=y; CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y; CONFIG_COMPILER_OPTIMIZATION_LEVEL_DEBUG=y; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=160; CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y; CONFIG_ESP_INT_WDT=y; CONFIG_ESP_INT_WDT_CHECK_CPU1=y; CONFIG_ESP_INT_WDT_TIMEOUT_MS=300; CONFIG_ESP_MAIN_TASK_STACK_SIZE=3584; CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=2304; CONFIG_ESP_TASK_WDT=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=y; CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=y; CONFIG_ESP_TASK_WDT_EN=y; CONFIG_ESP_TASK_WDT_INIT=y; CONFIG_ESP_TASK_WDT_TIMEOUT_S=5; CONFIG_ESP_TIMER_TASK_STACK_SIZE=3584; CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y; CONFIG_FREERTOS_HZ=100; CONFIG_LOG_DEFAULT_LEVEL=3; CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+[E94] working tree D:\ESP32-FAE\ESP32-Signal-Processing-System-github at d8f452b fix: run the demo at 100 Hz so harmonic features stop aliasing
+[E95] patch (since a33a18e~1): 289 line(s)
+[E96] patch file .gitattributes:
+      new file mode 100644
+      index 0000000..dc55e55
+      --- /dev/null
+      +++ b/.gitattributes
+      @@ -0,0 +1,2 @@
+      +# The telemetry component is vendored from MCU-Insight and kept with LF endings
+      +components/mcu_telemetry/* text eol=lf
+[E97] patch file components/mcu_telemetry/mcu_telemetry.c:
+      index beb3753..aefd4ce 100644
+      --- a/components/mcu_telemetry/mcu_telemetry.c
+      +++ b/components/mcu_telemetry/mcu_telemetry.c
+      @@ -68,6 +68,19 @@ static TaskHandle_t s_task;
+       static uint32_t s_seq;
+       static char s_buffer[MCU_TELEMETRY_BUFFER_SIZE];
+       static bool s_uart_ready;
+      +
+      +#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+      +#define MCU_TELEMETRY_MAX_IDLE 2
+      +
+      +typedef struct {
+      +    char name[16];
+      +    uint32_t last_counter;
+      +    bool used;
+      +} idle_track_t;
+      +
+      +static idle_track_t s_idle[MCU_TELEMETRY_MAX_IDLE];
+      +static int64_t s_idle_last_us;
+      +#endif
+       static uint32_t s_uart_retries;
+      
+       /* ------------------------------------------------------------------ */
+      @@ -470,6 +483,75 @@ static void sample_power_stats(void)
+       }
+       #endif
+      
+      +#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+      +/*
+      + * Publish how much of each core's time is spent inside its idle task.
+      + *
+      + * This is the metric that catches a busy-wait or a tight polling loop: it eats
+      + * the core without allocating memory or growing a stack, so no memory metric
+      + * would notice it. Requires CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS, where the
+      + * counter is microseconds (uint32, so deltas wrap safely).
+      + */
+      +static void sample_idle_fractions(void)
+      +{
+      +    static TaskStatus_t statuses[MCU_TELEMETRY_MAX_TASKS];
+      +    UBaseType_t count = uxTaskGetSystemState(statuses, MCU_TELEMETRY_MAX_TASKS, NULL);
+      +    if (count > MCU_TELEMETRY_MAX_TASKS) {
+      +        count = MCU_TELEMETRY_MAX_TASKS;
+      +    }
+      +
+      +    int64_t now = esp_timer_get_time();
+      +    int64_t elapsed = now - s_idle_last_us;
+      +    s_idle_last_us = now;
+      +    if (elapsed <= 0) {
+      +        return;
+      +    }
+      +
+      +    for (UBaseType_t i = 0; i < count; ++i) {
+      +        const char *name = statuses[i].pcTaskName;
+      +        if (name == NULL || strncasecmp(name, "IDLE", 4) != 0) {
+      +            continue;
+      +        }
+      +
+      +        idle_track_t *track = NULL;
+      +        for (size_t k = 0; k < MCU_TELEMETRY_MAX_IDLE; ++k) {
+      +            if (s_idle[k].used && strcasecmp(s_idle[k].name, name) == 0) {
+      +                track = &s_idle[k];
+      +                break;
+      +            }
+      +        }
+      +        if (track == NULL) {
+      +            for (size_t k = 0; k < MCU_TELEMETRY_MAX_IDLE; ++k) {
+      +                if (!s_idle[k].used) {
+      +                    track = &s_idle[k];
+      +                    copy_sanitised(track->name, sizeof(track->name), name);
+      +                    track->used = true;
+      +                    track->last_counter = statuses[i].ulRunTimeCounter;
+      +                    track = NULL;       /* first sample is only a reference */
+      +                    break;
+      +                }
+      +            }
+      +            continue;
+      +        }
+      +
+      +        uint32_t delta = statuses[i].ulRunTimeCounter - track->last_counter;
+      +        track->last_counter = statuses[i].ulRunTimeCounter;
+      +
+      +        int percent = (int)(((int64_t)delta * 100) / elapsed);
+      +        if (percent > 100) {
+      +            percent = 100;
+      +        }
+      +        char key[24];
+      +        size_t k = 0;
+      +        for (; track->name[k] != '\0' && k < 12; ++k) {
+      +            key[k] = (char)tolower((unsigned char)track->name[k]);
+      +        }
+      +        snprintf(key + k, sizeof(key) - k, "_pct");
+      +        mcu_telemetry_set_custom_int(key, percent);
+      +    }
+      +}
+      +#endif
+      +
+       static void telemetry_task(void *argument)
+       {
+           (void)argument;
+      @@ -483,6 +565,9 @@ static void telemetry_task(void *argument)
+               }
+       #if CONFIG_PM_ENABLE
+               sample_power_stats();
+      +#endif
+      +#if CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS
+      +        sample_idle_fractions();
+       #endif
+               report();
+               /* Returns early when mcu_telemetry_report_now() pokes the task. */
+[E98] patch file main/main.c:
+      index 51ce68a..37686ba 100644
+      --- a/main/main.c
+      +++ b/main/main.c
+      @@ -17,8 +17,66 @@
+      
+       static const char *TAG = "MAIN";
+      
+      +#define ENABLE_FAULT_INJECTION 1
+      +
+      +/*
+      + * Demo waveform frequency.
+      + *
+      + * The ADC samples at about 1 kS/s, so the Nyquist limit is ~503 Hz. A
+      + * triangle or square wave is identified by its harmonics, and at 200 Hz the
+      + * third harmonic (600 Hz) folds back to 406 Hz while the fifth lands near DC.
+      + * A few hertz of drift moves those folded components by a whole FFT bin, which
+      + * is what made the triangle class unstable (54% - 88% between runs).
+      + *
+      + * Keeping the fundamental at 100 Hz leaves the harmonics below Nyquist:
+      + * 100, 300, 500, 700 (folds to 306), ... so the spectrum shape is stable.
+      + */
+      +#define DEMO_WAVE_FREQ_HZ 100
+       static TaskHandle_t s_uart_task = NULL;
+      
+      +#if ENABLE_FAULT_INJECTION
+      +typedef enum {
+      +    FAULT_NONE = 0,
+      +    FAULT_HEAP,
+      +    FAULT_STACK,
+      +    FAULT_BUSY,
+      +} fault_mode_t;
+      +
+      +static volatile fault_mode_t s_fault = FAULT_NONE;
+      +static volatile void *s_leak_sink;
+      +static volatile uint8_t s_scratch_sink;
+      +
+      +/* A stack frame the compiler cannot optimise away. */
+      +static void fault_scratch(void)
+      +{
+      +    volatile uint8_t scratch[1800];
+      +    /* A plain memset over a void* cast loses the volatile qualifier and the
+      +     * compiler then deletes the whole frame; write through volatile instead. */
+      +    for (size_t i = 0; i < sizeof(scratch); i += 64) {
+      +        scratch[i] = (uint8_t)i;
+      +    }
+      +    s_scratch_sink = scratch[0];
+      +}
+      +
+      +static void fault_busy_task(void *arg)
+      +{
+      +    (void)arg;
+      +    for (;;) {
+      +        if (s_fault == FAULT_BUSY) {
+      +            int64_t deadline = esp_timer_get_time() + 5000;
+      +            while (esp_timer_get_time() < deadline) {
+      +            }
+      +            vTaskDelay(pdMS_TO_TICKS(5));
+      +            } else if (s_fault == FAULT_STACK) {
+      +                fault_scratch();
+      +                vTaskDelay(pdMS_TO_TICKS(20));
+      +        } else {
+      +            vTaskDelay(pdMS_TO_TICKS(100));
+      +        }
+      +    }
+      +}
+      +#endif
+      +
+       /*
+        * Data collection mode, driven from the UART: captures the feature vectors the
+        * model actually sees so training can use the real signal chain, and across
+      @@ -29,6 +87,18 @@ static TaskHandle_t s_uart_task = NULL;
+        * inference latency. Keep it off in normal builds. */
+       #define ENABLE_FEATURE_CAPTURE 0
+      
+      +/*
+      + * Fault injection, used to check that the observability tool actually notices
+      + * problems rather than only describing healthy firmware. Switch at run time
+      + * over the serial console:
+      + *
+      + *     FAULT heap    leak 2 KB per loop     -> heap.min falls
+      + *     FAULT stack   192 byte scratch frame -> main stack head-room falls
+      + *     FAULT busy    a 5 ms busy loop every 10 ms on a high priority task
+      + *                                          -> idle share collapses
+      + *     FAULT off     back to normal
+      + */
+      +
+       static volatile int s_collect_class = -1;
+       static volatile int s_collect_remaining = 0;
+       static int current_collect_freq = 200;
+      @@ -97,13 +167,27 @@ static void uart_task(void *arg)
+                               }
+                           }
+                       }
+      +#endif
+      +#if ENABLE_FAULT_INJECTION
+      +                else if (strncmp(cmd, "FAULT", 5) == 0) {
+      +                    if (strstr(cmd, "heap") != NULL) {
+      +                        s_fault = FAULT_HEAP;
+      +                    } else if (strstr(cmd, "stack") != NULL) {
+      +                        s_fault = FAULT_STACK;
+      +                    } else if (strstr(cmd, "busy") != NULL) {
+      +                        s_fault = FAULT_BUSY;
+      +                    } else {
+      +                        s_fault = FAULT_NONE;
+      +                    }
+      +                    ESP_LOGW(TAG, "Fault mode -> %d", (int)s_fault);
+      +                }
+       #endif
+                       else if (strncmp(cmd, "STOP", 4) == 0) {
+                           dac_wave_stop();
+                           ESP_LOGI(TAG, "DAC stopped");
+                       }
+                       else if (strncmp(cmd, "START", 5) == 0) {
+      -                    dac_wave_start(1000);
+      +                    dac_wave_start(DEMO_WAVE_FREQ_HZ);
+                           ESP_LOGI(TAG, "DAC started");
+                       }
+                       idx = 0;
+      @@ -136,12 +220,15 @@ void app_main(void)
+           webserver_start();
+      
+           // 启动 DAC 输出 1kHz 正弦波
+      -    dac_wave_start(1000);
+      +    dac_wave_start(DEMO_WAVE_FREQ_HZ);
+           ESP_LOGI(TAG, "DAC: 1kHz sine wave on GPIO25");
+           ESP_LOGI(TAG, "ADC: GPIO35 (connect GPIO25 to GPIO35)");
+      
+           // 创建串口命令任务
+           xTaskCreate(uart_task, "uart_cmd", 4096, NULL, 3, &s_uart_task);
+      +#if ENABLE_FAULT_INJECTION
+      +    xTaskCreate(fault_busy_task, "fault_busy", 2048, NULL, 5, NULL);
+      +#endif
+           TaskHandle_t main_task = xTaskGetCurrentTaskHandle();
+      
+           /*
+      @@ -250,7 +337,7 @@ void app_main(void)
+                   if (s_collect_remaining == 0 && --s_demo_countdown <= 0) {
+                       s_demo_countdown = 6;
+                       s_demo_index = (s_demo_index + 1) % MODEL_CLASSES;
+      -                dac_wave_set(s_demo_order[s_demo_index], 200);
+      +                dac_wave_set(s_demo_order[s_demo_index], DEMO_WAVE_FREQ_HZ);
+                       ESP_LOGI(TAG, "Demo source switched to %s at 200 Hz",
+                                model_class_name(s_demo_index));
+                   }
+      @@ -310,6 +397,15 @@ void app_main(void)
+                   }
+               }
+      
+      +#if ENABLE_FAULT_INJECTION
+      +        if (s_fault == FAULT_HEAP) {
+      +            /* The sink stops the compiler eliding the allocation. */
+      +            s_leak_sink = malloc(2048);
+      +        } else if (s_fault == FAULT_STACK) {
+      +            fault_scratch();
+      +        }
+      +#endif
+      +
+               // Stack high-water mark monitor (every 30 loops = 60 s)
+               static int s_monitor_count = 0;
+               if (++s_monitor_count % 30 == 0) {
+[E99] patch file sdkconfig.defaults:
+      index 36ee865..7c64f60 100644
+      --- a/sdkconfig.defaults
+      +++ b/sdkconfig.defaults
+      @@ -5,3 +5,5 @@ CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+       CONFIG_FREERTOS_USE_TRACE_FACILITY=y
+       # The board carries 4 MB of flash (esptool flash_id), not the 2 MB default
+       CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+      +# Per-task run time, so the telemetry agent can report idle share per core
+      +CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y

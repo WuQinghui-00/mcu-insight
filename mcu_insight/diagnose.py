@@ -20,10 +20,17 @@ from .store import Store
 
 #: Size budget for the rendered pack. Evidence that cannot be read in one go is
 #: evidence that will be ignored, and an unbounded dump is not a prompt.
-DEFAULT_MAX_BYTES = 24_000
+DEFAULT_MAX_BYTES = 36_000
 
 #: Samples kept per metric when the recorded series is longer than this.
 DEFAULT_MAX_SAMPLES = 40
+
+#: Patch lines kept in the evidence pack, and per file. A diff the reader
+#: skims is worse than none, but a patch that stops before the changed line is
+#: worse still: the range that introduced a fault is the one thing that lets
+#: an answer name a call site instead of describing a shape.
+DEFAULT_PATCH_LINES = 300
+DEFAULT_PATCH_BODY = 160
 
 #: Metrics worth a full series even when no rule mentions them.
 INTERESTING = (
@@ -88,16 +95,27 @@ def read_sdkconfig(path: str | Path) -> dict[str, str]:
     return dict(sorted(items.items()))
 
 
-def collect_changes(project_dir: str | Path, runner=subprocess.run) -> dict:
-    """What the working tree looks like, so a fresh edit is part of the evidence."""
+def collect_changes(project_dir: str | Path, runner=subprocess.run, since: str | None = None,
+                    max_lines: int = DEFAULT_PATCH_LINES) -> dict:
+    """The working tree and its patch, so the change under test is in evidence.
+
+    ``since`` is the revision the comparison starts from -- normally the one
+    the baseline recorded. Without it the patch can only describe the working
+    tree, and when the tree is clean the most recent commit is the only
+    candidate change; that is a guess about relevance, so it is labelled as
+    one rather than presented as the diff.
+    """
     folder = Path(project_dir)
     if not folder.is_dir():
         return {"project": str(folder), "available": False}
 
     def git(*args: str):
         try:
-            done = runner(["git", "-C", str(folder), *args],
-                          capture_output=True, text=True, timeout=15)
+            # Git speaks UTF-8, the platform default on a Chinese Windows is
+            # GBK, and a diff with any non-ascii byte in it turns stdout into
+            # None without raising here. Decode explicitly.
+            done = runner(["git", "-C", str(folder), *args], capture_output=True,
+                          encoding="utf-8", errors="replace", timeout=15)
         except (OSError, subprocess.SubprocessError):
             return None
         if done.returncode != 0:
@@ -110,13 +128,34 @@ def collect_changes(project_dir: str | Path, runner=subprocess.run) -> dict:
     if head is None:
         return {"project": str(folder), "available": False}
     status = git("--no-pager", "status", "--short") or ""
-    diffstat = git("--no-pager", "diff", "--stat", "HEAD") or ""
+    range_args = ["--no-pager", "diff", since] if since else ["--no-pager", "diff", "HEAD"]
+    if since:
+        label = f"since {since}"
+    else:
+        label = "working tree against HEAD"
+    raw = git(*range_args) or ""
+    if not raw.strip() and not since:
+        # A clean tree says nothing about the change under test, so fall back
+        # to the commit that just landed, and say what it is.
+        raw = git("--no-pager", "show", "--patch", "--stat", "HEAD") or ""
+        label = "the most recent commit, which need not be the change under test"
+
+    patch = [line.rstrip() for line in raw.splitlines()]
+    truncated = len(patch) > max_lines
     return {
         "project": str(folder),
         "available": True,
         "head": head.splitlines()[0].strip() if head.strip() else "",
         "modified": [line.rstrip() for line in status.splitlines() if line.strip()][:20],
-        "diffstat": [line.rstrip() for line in diffstat.splitlines() if line.strip()][-10:],
+        "diffstat": [
+            line.rstrip() for line in (git("--no-pager", "diff", "--stat", "HEAD") or "").splitlines()
+            if line.strip()
+        ][-10:],
+        "since": since,
+        "patch": patch[:max_lines],
+        "patch_lines": len(patch),
+        "patch_truncated": truncated,
+        "patch_label": label,
     }
 
 
@@ -239,12 +278,43 @@ def _build_summary(build: ImageReport | None, partition: int | None) -> dict | N
     }
 
 
+#: A unified diff starts a new file here.
+DIFF_HEADER = re.compile(r"^diff --git a/(.+?) b/(.+)$")
+
+
+def split_patch(lines: list[str], max_files: int = 6,
+                max_body: int = DEFAULT_PATCH_BODY) -> list[tuple[str, list[str]]]:
+    """Group a unified diff into (file name, body) pairs, bounded in both."""
+    files: list[tuple[str, list[str]]] = []
+    for line in lines:
+        header = DIFF_HEADER.match(line)
+        if header:
+            files.append((header.group(2), []))
+            continue
+        if not files:
+            files.append(("<commit header>", []))
+        if len(files[-1][1]) < max_body:
+            files[-1][1].append(line)
+    return files[:max_files]
+
+
+def resolve_diff_since(explicit: str | None, baseline_meta: dict | None) -> str | None:
+    """Which revision to diff from: the flag wins, then the baseline's own."""
+    if explicit:
+        return explicit
+    revision = (baseline_meta or {}).get("revision")
+    return revision or None
+
+
 def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
                     device: str | None = None, config_path: str | Path | None = None,
                     build: ImageReport | None = None, partition: int | None = None,
                     project_dir: str | Path | None = None,
                     note: list[str] | None = None,
                     metric_meta: dict | None = None,
+                    diff_since: str | None = None,
+                    patch_lines: int = DEFAULT_PATCH_LINES,
+                    baseline_meta: dict | None = None,
                     max_samples: int = DEFAULT_MAX_SAMPLES) -> dict:
     """Collect everything that is known, and nothing that is invented."""
     devices = report.devices or store.devices()
@@ -287,7 +357,9 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
         })
 
     config_file = Path(project_dir) / "sdkconfig" if project_dir else None
-    changes = collect_changes(project_dir) if project_dir else {"available": False}
+    since = resolve_diff_since(diff_since, baseline_meta)
+    changes = (collect_changes(project_dir, since=since, max_lines=patch_lines)
+               if project_dir else {"available": False})
 
     return {
         "device": target,
@@ -330,6 +402,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
             if config_file else None
         ),
         "changes": changes,
+        "baseline_meta": dict(baseline_meta or {}),
         "notes": [],
         "truncated": False,
     }
@@ -353,6 +426,12 @@ def render_evidence(pack: dict) -> str:
         add(f"provenance {item}")
     if pack.get("budget"):
         add(f"budget file {pack['budget']}")
+    baseline_meta = pack.get("baseline_meta") or {}
+    if baseline_meta.get("revision"):
+        add(f"baseline revision {baseline_meta['revision']}, recorded when the baseline was saved")
+    elif pack.get("budget"):
+        add("baseline revision unknown: the baseline file records no revision, so the"
+            " diff range has to be given with --diff-since")
 
     verdict = pack["verdict"]
     if verdict["violations"]:
@@ -418,6 +497,16 @@ def render_evidence(pack: dict) -> str:
             add(f"modified {line}")
         for line in changes["diffstat"]:
             add(f"diffstat {line.strip()}")
+        patch = changes.get("patch") or []
+        if patch:
+            label = changes.get("patch_label", "patch")
+            note = ", truncated" if changes.get("patch_truncated") else ""
+            add(f"patch ({label}): {changes.get('patch_lines', len(patch))} line(s){note}")
+            for name, body in split_patch(patch):
+                indented = "\n".join("      " + line for line in body)
+                add(f"patch file {name}:\n{indented}")
+        else:
+            add("patch none: the working tree is clean and no revision range was given")
     else:
         add("working tree not available: no project directory or not a git checkout")
 

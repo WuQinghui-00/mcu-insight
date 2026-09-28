@@ -37,7 +37,9 @@ from mcu_insight.diagnose import (  # noqa: E402
     pack_evidence_ids,
     read_sdkconfig,
     render_evidence,
+    resolve_diff_since,
     sample_series,
+    split_patch,
 )
 from mcu_insight.simulator import iter_frames  # noqa: E402
 from mcu_insight.store import Store  # noqa: E402
@@ -184,6 +186,91 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         labels = {change["metric"]: change["direction"] for change in pack["verdict"]["changed"]}
         self.assertEqual("worse", labels.get("heap.min"))
         self.assertIn("changed (worse) heap.min", render_evidence(pack))
+    def test_git_output_is_decoded_as_utf8(self):
+        # The platform default on Windows is GBK; a diff or a commit subject
+        # with any non-ascii byte in it silently emptied the whole section.
+        seen = {}
+
+        def fake_runner(args, **kwargs):
+            seen.update(kwargs)
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        collect_changes(self.dir, runner=fake_runner)
+        self.assertEqual("utf-8", seen.get("encoding"))
+        self.assertEqual("replace", seen.get("errors"))
+    def test_the_patch_is_collected_and_capped(self):
+        diff = "".join(f"diff --git a/f{index}.c b/f{index}.c\n+line\n" for index in range(200))
+
+        def fake_runner(args, **kwargs):
+            if "log" in args:
+                return subprocess.CompletedProcess(args, 0, "abc subject\n", "")
+            if "status" in args:
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return subprocess.CompletedProcess(args, 0, diff, "")
+
+        changes = collect_changes(self.dir, runner=fake_runner, max_lines=40)
+        self.assertEqual(40, len(changes["patch"]))
+        self.assertEqual(400, changes["patch_lines"])
+        self.assertTrue(changes["patch_truncated"])
+        self.assertEqual("working tree against HEAD", changes["patch_label"])
+
+    def test_a_clean_tree_labels_the_last_commit_as_a_candidate(self):
+        def fake_runner(args, **kwargs):
+            if "log" in args:
+                return subprocess.CompletedProcess(args, 0, "abc subject\n", "")
+            if "status" in args:
+                return subprocess.CompletedProcess(args, 0, "", "")
+            if "show" in args:
+                return subprocess.CompletedProcess(
+                    args, 0, "diff --git a/main.c b/main.c\n-old\n+new\n", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        changes = collect_changes(self.dir, runner=fake_runner)
+        self.assertIn("most recent commit", changes["patch_label"])
+        self.assertEqual(3, changes["patch_lines"])
+
+    def test_split_patch_groups_by_file_and_stays_bounded(self):
+        lines = ["diff --git a/one.c b/one.c", "@@ -1 +1 @@", "-a", "+b",
+                 "diff --git a/two.c b/two.c", "+c"]
+        self.assertEqual([("one.c", ["@@ -1 +1 @@", "-a", "+b"]), ("two.c", ["+c"])],
+                         split_patch(lines))
+        many = []
+        for index in range(20):
+            many += [f"diff --git a/f{index}.c b/f{index}.c", "+x"]
+        files = split_patch(many, max_files=3, max_body=1)
+        self.assertEqual(3, len(files))
+        self.assertEqual(["+x"], files[0][1])
+
+    def test_the_flag_wins_over_the_revision_in_the_baseline(self):
+        self.assertEqual("abc", resolve_diff_since("abc", {"revision": "def"}))
+        self.assertEqual("def", resolve_diff_since(None, {"revision": "def"}))
+        self.assertIsNone(resolve_diff_since(None, {}))
+        self.assertIsNone(resolve_diff_since(None, None))
+
+    def test_the_pack_admits_an_unknown_baseline_revision(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6)
+        self.assertIn("baseline revision unknown", render_evidence(pack))
+
+    def test_a_recorded_revision_is_announced(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             baseline_meta={"revision": "d8f452b fix: run the demo at 100 Hz"})
+        self.assertIn("baseline revision d8f452b", render_evidence(pack))
+
+    def test_a_patch_is_rendered_one_entry_per_file(self):
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 10 ** 9, "stat": "min"}],
+                             count=8)
+        pack["changes"] = {
+            "available": True, "project": "C:/fw", "head": "abc subject",
+            "modified": [" M main/main.c"], "diffstat": [" main/main.c | 3 ++-"],
+            "since": None,
+            "patch": ["diff --git a/main/main.c b/main/main.c", "@@ -10,3 +10,4 @@", "-old", "+new"],
+            "patch_lines": 4, "patch_truncated": False,
+            "patch_label": "working tree against HEAD",
+        }
+        text = render_evidence(pack)
+        self.assertIn("patch (working tree against HEAD): 4 line(s)", text)
+        self.assertIn("patch file main/main.c", text)
+        self.assertIn("+new", text)
     def test_downsampling_keeps_both_ends(self):
         points = [(float(i), float(i)) for i in range(100)]
         series, downsampled = sample_series(points, 10)
@@ -418,5 +505,19 @@ class AuditCommandTest(TempWorkspace, unittest.TestCase):
             code = main(["audit", "--pack", str(pack), "--answer", str(answer)])
         self.assertEqual(1, code)
         self.assertIn("E404", buffer.getvalue())
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@unittest.skipUnless((REPO_ROOT / ".git").exists(), "needs a git checkout")
+class RealRepositoryTest(unittest.TestCase):
+    """The patch plumbing, against real git rather than a fake."""
+
+    def test_the_repository_can_describe_its_own_recent_change(self):
+        changes = collect_changes(REPO_ROOT, since="HEAD~3")
+        self.assertTrue(changes["available"])
+        self.assertTrue(changes["head"])
+        self.assertEqual("HEAD~3", changes["since"])
+        self.assertEqual("since HEAD~3", changes["patch_label"])
+        self.assertTrue(changes["patch"], "three commits must have touched something")
 if __name__ == "__main__":
     unittest.main()

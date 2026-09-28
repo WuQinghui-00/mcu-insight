@@ -371,6 +371,26 @@ anything the name cannot say:
   }
 }
 ```
+The pack also carries the change itself, because a shape can be described
+without it but a call site cannot be named. `--diff-since REV` diffs from that
+revision to the working tree, capped and split into one evidence entry per
+file. With no revision given it diffs the working tree against `HEAD`, and if
+the tree is clean it falls back to the most recent commit and labels it as a
+candidate, since a clean tree says nothing about which change is under test.
+The cap is 300 lines, 160 per file, and `--patch-lines` moves it: a patch that
+stops before the changed line is worse than no patch.
+
+A baseline can record where it came from, so the range is known rather than
+guessed:
+
+```powershell
+python -m mcu_insight check --db capture.db --config budgets/signal.json `
+    --save-baseline budgets/signal_baseline.json --project ../firmware
+```
+
+Comparison ignores that `_meta` block, so baselines saved before it still work.
+Without a recorded revision the pack says the range is unknown instead of
+quietly diffing against whatever `HEAD` happens to be.
 Two rules keep it useful. The pack is trimmed to a size budget, dropping series
 for metrics nothing flagged, because evidence that cannot be read in one go is
 evidence that gets ignored. And a series that never moves collapses to one

@@ -113,6 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--config", help="JSON file with threshold rules")
     check.add_argument("--baseline", help="baseline JSON (defaults to the one in the config)")
     check.add_argument("--save-baseline", help="store the current values as a baseline")
+    check.add_argument("--project",
+                        help="firmware project directory, recorded inside the baseline")
     check.add_argument("--top", type=int, default=12)
     check.add_argument("--json", action="store_true")
 
@@ -148,6 +150,10 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose.add_argument("--partition", help="app partition size, e.g. 1500K")
     diagnose.add_argument("--project", help="firmware project directory: sdkconfig and git state")
     diagnose.add_argument("--device", help="device to report on (default: the busiest)")
+    diagnose.add_argument("--patch-lines", type=int, default=diagnose_mod.DEFAULT_PATCH_LINES,
+                          help="patch lines kept in the pack")
+    diagnose.add_argument("--diff-since",
+                          help="revision to diff from (default: the one in the baseline)")
     diagnose.add_argument("--note", action="append",
                           help="how the capture was produced; repeatable")
     diagnose.add_argument("--max-samples", type=int, default=diagnose_mod.DEFAULT_MAX_SAMPLES,
@@ -296,11 +302,19 @@ def cmd_check(args: argparse.Namespace) -> int:
 
     with Store(db) as store:
         if args.save_baseline:
-            snapshot = checks_mod.save_baseline(store, args.save_baseline)
-            print(
-                f"baseline saved: {args.save_baseline} "
-                f"({len(snapshot)} device(s))"
-            )
+            meta = {}
+            if args.project:
+                changes = diagnose_mod.collect_changes(args.project)
+                if changes.get("available"):
+                    meta = {"revision": changes["head"], "project": changes["project"]}
+            devices = store.devices()
+            if devices:
+                meta.setdefault("firmware", store.latest_firmware(devices[0]))
+            snapshot = checks_mod.save_baseline(store, args.save_baseline, meta or None)
+            saved = [key for key in snapshot if not key.startswith("_")]
+            print(f"baseline saved: {args.save_baseline} ({len(saved)} device(s))")
+            if meta:
+                print(f"  recorded revision: {meta.get('revision', 'unknown')}")
             return 0
 
         if not args.config:
@@ -429,6 +443,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         partition = parse_size(args.partition) if args.partition else None
 
     baseline = checks_mod.load_baseline(baseline_path) if baseline_path else None
+    baseline_meta = checks_mod.load_baseline_meta(baseline_path) if baseline_path else {}
 
     with Store(db) as store:
         report = checks_mod.check_store(store, config, baseline, baseline_path)
@@ -436,6 +451,8 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
             store, report, database=str(db), device=args.device, config_path=args.config,
             note=args.note,
             metric_meta=config.get("metrics"),
+            diff_since=args.diff_since, baseline_meta=baseline_meta,
+            patch_lines=args.patch_lines,
             build=build, partition=partition, project_dir=args.project,
             max_samples=args.max_samples,
         )
