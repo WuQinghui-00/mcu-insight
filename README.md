@@ -13,7 +13,8 @@ The tool answers questions a code review cannot answer:
 Stages 1 to 4 are in place: build-time resource accounting, TinyML model
 analysis, runtime telemetry from the device, and threshold/baseline checks with
 fault injection evidence, and the offline half of the diagnosis layer: an
-evidence pack, the prompt, and the audit that checks an answer against it. Calling a model is the remaining step.
+evidence pack, the prompt, and the audit that checks an answer against it. `docs/diagnosis-case-study.md` walks the same
+capture through three generations of evidence pack. Calling a model is the remaining step.
 
 ## Usage
 
