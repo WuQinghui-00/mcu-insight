@@ -53,7 +53,7 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 </ul></section>
 <section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
 <div class=step><div class="where">run inside mcu-insight\</div><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
-map       : D:\ESP32-FAE\ESP32-Signal-Processing-System-github\build\signal_processing_system.map
+map       : build\signal_processing_system.map
 
 Flash image
   estimated   :  1,065,624 B  (1.02 MiB)

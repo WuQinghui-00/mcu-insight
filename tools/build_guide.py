@@ -172,6 +172,13 @@ def paragraph_containing(path: Path, needle: str, limit: int = 4) -> str:
     return ""
 
 
+def tidy(text: str) -> str:
+    """Strip this machine's directory names before they reach a public page."""
+    for root in (str(REPO_ROOT), str(DEFAULT_PROJECT)):
+        text = text.replace(root + "\\", "").replace(root + "/", "")
+    return text
+
+
 def pick_build():
     """The linker map to show in route A, and its binary when one is around."""
     candidate = DEFAULT_PROJECT / "build" / "signal_processing_system.map"
@@ -191,16 +198,16 @@ def collect() -> dict:
             str(path.relative_to(component)).replace("\\", "/")
             for path in sorted(component.rglob("*")) if path.is_file()
         ],
-        "analyze": take(run(*analyze), 10),
-        "model": take(run("model", "training/out/waveform_model_real.tflite"), 8),
-        "summary": take(run("summary", "--db", "captures/fault-off.db", "--top", "4"), 9),
-        "check": run("check", "--db", "captures/fault-heap.db",
-                     "--config", "budgets/signal.json"),
-        "evidence": take(run("diagnose", "--db", "captures/fault-heap.db",
-                             "--config", "budgets/signal.json", "--dry-run"), 8),
+        "analyze": tidy(take(run(*analyze), 10)),
+        "model": tidy(take(run("model", "training/out/waveform_model_real.tflite"), 8)),
+        "summary": tidy(take(run("summary", "--db", "captures/fault-off.db", "--top", "4"), 9)),
+        "check": tidy(run("check", "--db", "captures/fault-heap.db",
+                          "--config", "budgets/signal.json")),
+        "evidence": tidy(take(run("diagnose", "--db", "captures/fault-heap.db",
+                                  "--config", "budgets/signal.json", "--dry-run"), 8)),
         "answer": paragraph_containing(ANSWERS / "round-3.md", "s_leak_sink = malloc(2048)"),
-        "audit": run("audit", "--pack", str(PROMPTS / "round-3.txt"),
-                     "--answer", str(ANSWERS / "round-3.md")),
+        "audit": tidy(run("audit", "--pack", str(PROMPTS / "round-3.txt"),
+                          "--answer", str(ANSWERS / "round-3.md"))),
     }
 
 

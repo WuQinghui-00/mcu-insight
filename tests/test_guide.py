@@ -13,7 +13,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from tools.build_guide import TEXT, paragraph_containing, render, take  # noqa: E402
+from tools.build_guide import (  # noqa: E402
+    DEFAULT_PROJECT,
+    REPO_ROOT,
+    TEXT,
+    paragraph_containing,
+    render,
+    take,
+    tidy,
+)
 
 FACTS = {
     "component_files": ["CMakeLists.txt", "include/mcu_telemetry.h", "mcu_telemetry.c"],
@@ -135,6 +143,10 @@ class GuidePageTest(unittest.TestCase):
         for artifact in ("report.html", "captures/board.db", "baseline.json",
                          "prompt.txt and answer.md", "exit code of check"):
             self.assertIn(artifact, page, artifact)
+    def test_the_pages_do_not_carry_this_machines_paths(self):
+        text = tidy(f"map : {DEFAULT_PROJECT}\\build\\app.map and {REPO_ROOT}\\docs")
+        self.assertNotIn("ESP32-FAE", text)
+        self.assertIn("build\\app.map", text)
     def test_take_says_when_it_dropped_lines(self):
         self.assertEqual("a\nb\n...", take("a\nb\nc\nd", 2))
         self.assertEqual("a\nb", take("a\nb", 5))
