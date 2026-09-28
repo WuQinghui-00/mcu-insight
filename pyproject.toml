@@ -15,6 +15,10 @@ license = { text = "MIT" }
 # standard library alone.
 serial = ["pyserial>=3.5"]
 
+[project.urls]
+Repository = "https://github.com/WuQinghui-00/mcu-insight"
+Guide = "https://wuqinghui-00.github.io/mcu-insight/"
+
 [project.scripts]
 mcu-insight = "mcu_insight.cli:main"
 

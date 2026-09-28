@@ -1,6 +1,10 @@
 # MCU-Insight
 
+[![tests](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml/badge.svg)](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml)
+
 Resource observability for embedded firmware (ESP-IDF / FreeRTOS).
+
+**[在浏览器里读这份指南](https://wuqinghui-00.github.io/mcu-insight/index.zh.html)** · [in English](https://wuqinghui-00.github.io/mcu-insight/)
 
 The tool answers questions a code review cannot answer:
 
