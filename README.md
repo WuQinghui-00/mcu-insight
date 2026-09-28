@@ -323,7 +323,11 @@ only, skipping the first ten seconds after it because start-up is still
 allocating Wi-Fi and MQTT buffers. That matters most for high-water-mark
 metrics: `heap.min` is at its post-boot peak right after a reset, so comparing
 the first sample with the last would report a 25 KB "leak" that is really the
-first second of the run. The checks are unaffected and still cover every frame,
+first second of the run. A capture whose newest session is shorter than a rate rule's `min_span_ms`
+renders as INCOMPLETE rather than PASS. `captures/signal-reboot.db` does
+exactly that: its second session holds fifty five seconds of steady state, and
+fifty five seconds is not enough to measure a slope in.
+The checks are unaffected and still cover every frame,
 so nothing is hidden from the pass/fail verdict.
 
 ## Thresholds and rates
