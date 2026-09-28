@@ -113,6 +113,11 @@ class GuidePageTest(unittest.TestCase):
     def test_the_page_links_to_a_report_you_can_open(self):
         self.assertIn('href="report-demo.html"', render("en", FACTS))
 
+    def test_the_page_lists_what_the_reader_ends_up_with(self):
+        page = render("en", FACTS)
+        for artifact in ("report.html", "captures/board.db", "baseline.json",
+                         "prompt.txt and answer.md", "exit code of check"):
+            self.assertIn(artifact, page, artifact)
     def test_take_says_when_it_dropped_lines(self):
         self.assertEqual("a\nb\n...", take("a\nb\nc\nd", 2))
         self.assertEqual("a\nb", take("a\nb", 5))

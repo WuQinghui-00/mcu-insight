@@ -172,5 +172,8 @@ unknown name: none
 uncited line: 0 (a warning, not an error)
 
 RESULT: OK</pre></div></div><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre></div></section>
+<section><h2>What you end up with</h2><p class="note">Run the whole thing and these are what is left over. All of it is on your own machine; nothing is uploaded anywhere.</p><ul>
+<li><b>report.html</b> - for a human: double-click it, one page on what the build costs and where it is tight.</li><li><b>captures/board.db</b> - your own data: every later command reads this file, so the board stays unplugged.</li><li><b>budgets/...-baseline.json</b> - for the next change: it is compared automatically and tells you which metric moved.</li><li><b>prompt.txt and answer.md</b> - the exchange with the AI: the evidence pack, and the diagnosis it gave.</li><li><b>the exit code of check</b> - for CI: 0 pass, 1 fail, so a pipeline can gate on it.</li>
+</ul></section>
 <footer>Every output on this page was produced by running the tool against the captures and the build committed in this repository. Rebuild it with <code>python tools/build_guide.py</code>.</footer>
 </div></body></html>

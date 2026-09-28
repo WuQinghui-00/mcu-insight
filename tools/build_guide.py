@@ -281,6 +281,13 @@ TEXT = {
         "diag_u": "3. checked against the pack (audit)",
         "nb": "A. Change nothing",
         "nb_d": "Two commands that read the files your build already made. Use these if the question is only whether it still fits.",
+        "result": "What you end up with",
+        "result_d": "Run the whole thing and these are what is left over. All of it is on your own machine; nothing is uploaded anywhere.",
+        "result1": "<b>report.html</b> - for a human: double-click it, one page on what the build costs and where it is tight.",
+        "result2": "<b>captures/board.db</b> - your own data: every later command reads this file, so the board stays unplugged.",
+        "result3": "<b>budgets/...-baseline.json</b> - for the next change: it is compared automatically and tells you which metric moved.",
+        "result4": "<b>prompt.txt and answer.md</b> - the exchange with the AI: the evidence pack, and the diagnosis it gave.",
+        "result5": "<b>the exit code of check</b> - for CI: 0 pass, 1 fail, so a pipeline can gate on it.",
         "foot": "Every output on this page was produced by running the tool against the "
                 "captures and the build committed in this repository. Rebuild it with "
                 "<code>python tools/build_guide.py</code>.",
@@ -350,6 +357,13 @@ TEXT = {
         "diag_u": "3. 拿回证据包里核对（audit）",
         "nb": "A. 不改代码就能用",
         "nb_d": "两条命令，读你编译好的文件，不用板子。只想确认还装得下吗，就走这条。",
+        "result": "最后你手上有什么",
+        "result_d": "跑完整条流程，多出来的是这几样。全部在你自己电脑上，没有云端副本。",
+        "result1": "<b>report.html</b> —— 给人看的：双击打开，一页看完固件占多少、哪里紧张。",
+        "result2": "<b>captures/board.db</b> —— 你自己的数据：以后的分析都读它，不用再插板子。",
+        "result3": "<b>budgets/…-baseline.json</b> —— 给下一次改动：自动对比，告诉你哪一项变差了。",
+        "result4": "<b>prompt.txt 和 answer.md</b> —— 你和 AI 的一来一回：证据包，加它给出的诊断。",
+        "result5": "<b>check 的退出码</b> —— 给 CI：0 通过、1 不通过，可以直接卡流水线。",
         "foot": "本页每段输出都是拿本仓库里已提交的采集和构建产物真跑出来的。"
                 "重新生成：<code>python tools/build_guide.py</code>。",
     },
@@ -466,6 +480,9 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         "</section>",
         f"<section><h2>{c['steps']}</h2><p>{c['b_intro']}</p>{route_b}</section>",
         f"<section><h2>{c['tail']}</h2>{tail}</section>",
+        f"<section><h2>{c['result']}</h2><p class=\"note\">{c['result_d']}</p><ul>",
+        "".join(f"<li>{c[f'result{i}']}</li>" for i in (1, 2, 3, 4, 5)),
+        "</ul></section>",
         f"<footer>{c['foot']}</footer>",
         "</div></body></html>",
     ])

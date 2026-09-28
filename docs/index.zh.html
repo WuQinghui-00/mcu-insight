@@ -172,5 +172,8 @@ unknown name: none
 uncited line: 0 (a warning, not an error)
 
 RESULT: OK</pre></div></div><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre></div></section>
+<section><h2>最后你手上有什么</h2><p class="note">跑完整条流程，多出来的是这几样。全部在你自己电脑上，没有云端副本。</p><ul>
+<li><b>report.html</b> —— 给人看的：双击打开，一页看完固件占多少、哪里紧张。</li><li><b>captures/board.db</b> —— 你自己的数据：以后的分析都读它，不用再插板子。</li><li><b>budgets/…-baseline.json</b> —— 给下一次改动：自动对比，告诉你哪一项变差了。</li><li><b>prompt.txt 和 answer.md</b> —— 你和 AI 的一来一回：证据包，加它给出的诊断。</li><li><b>check 的退出码</b> —— 给 CI：0 通过、1 不通过，可以直接卡流水线。</li>
+</ul></section>
 <footer>本页每段输出都是拿本仓库里已提交的采集和构建产物真跑出来的。重新生成：<code>python tools/build_guide.py</code>。</footer>
 </div></body></html>
