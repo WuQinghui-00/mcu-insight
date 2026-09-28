@@ -2,6 +2,14 @@
 
 [English](README.md) · **中文**
 
+## 项目定位
+
+用 AI 写嵌入式代码很快，但**没有人量过这些代码在真实板子上占多少资源**。编译通过只说明装得下，不说明跑五分钟后堆还剩多少、最深那次调用离栈底还有几个字节——而这些数据只有量出来才有，通用 AI 能读代码却读不到板子。
+
+所以这个助手把三样东西放在一起：**构建产物**（.map / .bin / .tflite）、**设备端每 5 秒上报的真实数据**（每任务栈高水位、堆最小块、每核空闲占比、延迟分位数、睡眠占比）、以及**项目自己写的红线**。然后给出三个输出：给人看的自包含 HTML 报告、给机器的退出码（PASS / FAIL / INCOMPLETE）、给 AI 的编号化证据包。
+
+诊断这一半有个前提：**AI 说的话必须可核对**。证据包里每条事实都带编号，提问模板要求逐条引用、分不清就直说、不许编造、全文不超过 400 字；答案拿回来再用 `audit` 核对——引用了不存在的编号直接失败。这样它就能回答三个问题：**这段代码能不能跑、比上一版差了没有、差在哪里**。
+
 [![tests](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml/badge.svg)](https://github.com/WuQinghui-00/mcu-insight/actions/workflows/tests.yml)
 
 TinyML 嵌入式固件的资源核算、可观测性与 AI 诊断（ESP-IDF / FreeRTOS）
