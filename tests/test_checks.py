@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mcu_insight.checks import (  # noqa: E402
     ConfigError,
+    baseline_detail,
     check_store,
     load_baseline,
     load_baseline_meta,
@@ -128,6 +129,29 @@ class CheckTest(unittest.TestCase):
         self.assertEqual([], report.violations)
         self.assertEqual([], report.unevaluated)
         self.assertTrue(report.ok)
+    def test_a_new_baseline_records_its_own_shape(self):
+        store = self.store_for("steady", count=20)
+        path = self.dir / "shaped.json"
+        save_baseline(store, path, meta={"revision": "abc"})
+        device = store.devices()[0]
+
+        capture = baseline_detail(path)[device]["capture"]
+        self.assertEqual(20, capture["frames"])
+        self.assertEqual(1, capture["boot_sessions"])
+        self.assertGreater(capture["steady_span_ms"], 0)
+
+        entry = baseline_detail(path)[device]["metrics"]["heap.free"]
+        self.assertIn("rate_per_s", entry)
+        self.assertIn("min", entry)
+        self.assertEqual(entry["last"], load_baseline(path)[device]["heap.free"])
+
+    def test_an_old_flat_baseline_is_lifted_without_inventing_a_shape(self):
+        path = self.dir / "old.json"
+        path.write_text(json.dumps({"dev": {"heap.free": 123.0}}), encoding="utf-8")
+        detail = baseline_detail(path)
+        self.assertEqual({}, detail["dev"]["capture"])
+        self.assertEqual({"last": 123.0}, detail["dev"]["metrics"]["heap.free"])
+        self.assertEqual({"heap.free": 123.0}, load_baseline(path)["dev"])
     def test_a_baseline_can_record_which_revision_it_describes(self):
         store = self.store_for("steady")
         path = self.dir / "baseline.json"
@@ -221,7 +245,15 @@ class CheckTest(unittest.TestCase):
         path = self.dir / "baseline.json"
         snapshot = save_baseline(store, path)
         self.assertIn("esp32-light-monitor", snapshot)
-        self.assertEqual(load_baseline(path), snapshot)
+        # The file keeps a shape and a slope per metric; the flat view is the
+        # projection the comparison still reads.
+        self.assertEqual(
+            {
+                device: {name: entry["last"] for name, entry in metrics["metrics"].items()}
+                for device, metrics in snapshot.items()
+            },
+            load_baseline(path),
+        )
 
     def test_heap_leak_shows_up_against_the_baseline(self) -> None:
         healthy = self.store_for("steady")

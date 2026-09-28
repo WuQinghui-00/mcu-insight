@@ -357,6 +357,33 @@ green on the strength of a check that was never carried out.
 
 Slopes are measured after the boot warm-up and inside the newest boot session,
 the same way the report reads its trend cards.
+## Baselines carry their shape
+
+```powershell
+python -m mcu_insight check --db clean.db --config budgets/signal.json `
+    --save-baseline budgets/signal_baseline.json --project ../firmware
+```
+
+The snapshot records the revision it came from, how many frames and boot
+sessions it covers, how long its steady state lasted, and per metric the last
+value together with its extremes, its sample count and its steady slope.
+
+A flat value could say that something changed. It could not say whether the
+change was real or just a shorter soak, because a high-water mark keeps falling
+the longer you watch it. With the slope on both sides the question answers
+itself, and the length of each capture is in the file:
+
+```
+baseline capture: 21 frames, 1 boot session(s), 90 s of steady state
+baseline rates per second, then now: heap.free +0.1/s -> -956.9/s; heap.min -0.1/s -> -958.2/s
+note the baseline ran 90 s of steady state against 95 s here, so the level deltas are comparable
+```
+
+When the two durations differ by more than a factor of two the pack says so and
+points at the rates instead. A baseline written before this existed is lifted
+into the new shape without inventing anything: its capture block stays empty,
+and the pack falls back to the one duration the file does carry, the
+`uptime_ms` the device had reached when the snapshot was taken.
 ## Diagnosis: the evidence pack
 
 Detection is arithmetic; explaining a detection is not. `diagnose` collects

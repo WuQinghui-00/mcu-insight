@@ -250,6 +250,35 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertIsNone(resolve_diff_since(None, {}))
         self.assertIsNone(resolve_diff_since(None, None))
 
+    def test_the_pack_admits_a_baseline_with_no_shape(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             baseline_detail={"esp32-light-monitor": {
+                                 "capture": {},
+                                 "metrics": {"uptime_ms": {"last": 248337.0}}}})
+        text = render_evidence(pack)
+        self.assertIn("predates the capture shape", text)
+        self.assertIn("uptime_ms 248,337", text)
+        self.assertIn("the rates are the ones to compare", text)
+
+    def test_two_captures_of_similar_length_are_called_comparable(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             baseline_detail={"esp32-light-monitor": {
+                                 "capture": {"frames": 6, "boot_sessions": 1,
+                                             "steady_span_ms": 6000.0},
+                                 "metrics": {"heap.free": {"last": 145000.0,
+                                                           "rate_per_s": -200.0}}}})
+        text = render_evidence(pack)
+        self.assertIn("the level deltas are comparable", text)
+        self.assertIn("baseline rates per second", text)
+        self.assertIn("heap.free -200.0/s", text)
+
+    def test_a_much_longer_baseline_is_flagged_as_not_comparable(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             baseline_detail={"esp32-light-monitor": {
+                                 "capture": {"frames": 250, "boot_sessions": 1,
+                                             "steady_span_ms": 240000.0},
+                                 "metrics": {}}})
+        self.assertIn("carry that difference", render_evidence(pack))
     def test_the_pack_admits_an_unknown_baseline_revision(self):
         pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6)
         self.assertIn("baseline revision unknown", render_evidence(pack))

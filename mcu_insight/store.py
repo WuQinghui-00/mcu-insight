@@ -174,6 +174,13 @@ class Store:
                 entry.maximum = max(entry.maximum, value)
         return stats
 
+    def uptimes(self, device: str) -> list[float]:
+        """The device clock of every stored frame, in arrival order."""
+        rows = self._conn.execute(
+            "SELECT uptime_ms FROM frames WHERE device = ? ORDER BY id", (device,)
+        ).fetchall()
+        return [float(uptime) for (uptime,) in rows]
+
     def series(self, device: str, metric: str) -> list[tuple[float, float]]:
         rows = self._conn.execute(
             "SELECT f.uptime_ms, s.value FROM samples s JOIN frames f ON f.id = s.frame_id"

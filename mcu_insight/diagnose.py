@@ -17,6 +17,7 @@ from pathlib import Path
 from .analysis import ImageReport
 from .checks import CheckReport, change_verdict
 from .store import Store
+from .trends import slope_per_second, steady_samples, steady_span_ms
 
 #: Size budget for the rendered pack. Evidence that cannot be read in one go is
 #: evidence that will be ignored, and an unbounded dump is not a prompt.
@@ -29,6 +30,10 @@ DEFAULT_MAX_SAMPLES = 40
 #: skims is worse than none, but a patch that stops before the changed line is
 #: worse still: the range that introduced a fault is the one thing that lets
 #: an answer name a call site instead of describing a shape.
+#: Below this, a slope is printed as flat rather than listed. It is a display
+#: threshold, not a judgement: the rule bounds are the judgement.
+RATE_NOISE_FLOOR = 1.0
+
 DEFAULT_PATCH_LINES = 300
 DEFAULT_PATCH_BODY = 160
 
@@ -315,6 +320,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
                     diff_since: str | None = None,
                     patch_lines: int = DEFAULT_PATCH_LINES,
                     baseline_meta: dict | None = None,
+                    baseline_detail: dict | None = None,
                     max_samples: int = DEFAULT_MAX_SAMPLES) -> dict:
     """Collect everything that is known, and nothing that is invented."""
     devices = report.devices or store.devices()
@@ -329,7 +335,9 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
         entry = stats.get(name)
         if entry is None:
             continue
-        series, downsampled = sample_series(store.series(target, name), max_samples)
+        points = store.series(target, name)
+        series, downsampled = sample_series(points, max_samples)
+        rate = slope_per_second(steady_samples(points)[1])
         with_series.append({
             "name": name,
             "count": entry.count,
@@ -339,6 +347,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
             "series_ms": series,
             "downsampled": downsampled,
             "constant": len({value for _, value in series}) <= 1,
+            "rate_per_s": None if rate is None else round(rate, 3),
             **metric_meaning(name, metric_meta),
         })
 
@@ -403,9 +412,101 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
         ),
         "changes": changes,
         "baseline_meta": dict(baseline_meta or {}),
+        "baseline": _baseline_summary(baseline_detail, target, store),
         "notes": [],
         "truncated": False,
     }
+
+
+def _baseline_summary(detail: dict | None, device: str, store: Store) -> dict | None:
+    """What the baseline was, next to what this capture is.
+
+    The two things a comparison needs and a flat value cannot supply: how long
+    the baseline watched for, and how fast each metric was moving while it did.
+    """
+    if not detail:
+        return None
+    entry = detail.get(device) or {}
+    metrics = entry.get("metrics") or {}
+    rates = {
+        name: value["rate_per_s"]
+        for name, value in metrics.items()
+        if isinstance(value, dict) and value.get("rate_per_s") is not None
+    }
+    uptimes = store.uptimes(device) if device else []
+    recorded_uptime = metrics.get("uptime_ms")
+    if isinstance(recorded_uptime, dict):
+        recorded_uptime = recorded_uptime.get("last")
+    return {
+        "capture": entry.get("capture") or {},
+        "recorded_metrics": len(metrics),
+        "rates": rates,
+        "recorded_uptime_ms": recorded_uptime,
+        "current_steady_span_ms": round(
+            steady_span_ms([(uptime, 0.0) for uptime in uptimes]), 1
+        ),
+    }
+
+
+def _render_baseline(pack: dict, add) -> None:
+    """The baseline block: its shape, its rates, and whether a delta is fair."""
+    baseline = pack.get("baseline")
+    if not baseline:
+        return
+    capture = baseline.get("capture") or {}
+    base_span = capture.get("steady_span_ms")
+    current_span = baseline.get("current_steady_span_ms") or 0.0
+
+    if base_span:
+        add(f"baseline capture: {capture.get('frames', 0)} frames,"
+            f" {capture.get('boot_sessions', 0)} boot session(s),"
+            f" {base_span / 1000:.0f} s of steady state")
+    else:
+        recorded = baseline.get("recorded_uptime_ms")
+        if recorded:
+            add(f"baseline capture: not recorded -- the file predates the capture shape."
+                f" The one duration it carries is uptime_ms {recorded:,.0f}, the point"
+                " the device had reached when the snapshot was taken")
+        else:
+            add("baseline capture: not recorded -- the baseline file predates the capture"
+                " shape, so how long it watched for is unknown")
+
+    comparisons = []
+    omitted = 0
+    for metric in pack["metrics"]:
+        recorded = (baseline.get("rates") or {}).get(metric["name"])
+        current = metric.get("rate_per_s")
+        if recorded is None or current is None:
+            continue
+        # A pair that sits still on both sides says nothing, and a line per
+        # stationary metric buries the ones that moved.
+        if max(abs(recorded), abs(current)) < RATE_NOISE_FLOOR:
+            omitted += 1
+            continue
+        comparisons.append(f"{metric['name']} {recorded:+.1f}/s -> {current:+.1f}/s")
+    if comparisons:
+        tail = f"; {omitted} more barely move on either side" if omitted else ""
+        add("baseline rates per second, then now: " + "; ".join(comparisons) + tail)
+
+    if not base_span:
+        recorded = baseline.get("recorded_uptime_ms")
+        if recorded and current_span:
+            add(f"note the baseline was taken after {recorded / 1000:.0f} s of uptime"
+                f" and this capture holds {current_span / 1000:.0f} s of steady state."
+                " A level delta on a high-water mark carries part of that difference,"
+                " so the rates are the ones to compare; a baseline saved from now on"
+                " records its own span and settles it")
+        else:
+            add("note a level delta cannot be told apart from a shorter soak when the"
+                " baseline records no duration; compare rates, and re-save the baseline"
+                " so it records its shape")
+    elif current_span and max(base_span, current_span) >= 2 * min(base_span, current_span):
+        add(f"note the baseline ran {base_span / 1000:.0f} s of steady state and this"
+            f" capture {current_span / 1000:.0f} s, so level deltas on high-water marks"
+            " carry that difference; the rates above are the ones to compare")
+    else:
+        add(f"note the baseline ran {base_span / 1000:.0f} s of steady state against"
+            f" {current_span / 1000:.0f} s here, so the level deltas are comparable")
 
 
 def render_evidence(pack: dict) -> str:
@@ -426,6 +527,7 @@ def render_evidence(pack: dict) -> str:
         add(f"provenance {item}")
     if pack.get("budget"):
         add(f"budget file {pack['budget']}")
+    _render_baseline(pack, add)
     baseline_meta = pack.get("baseline_meta") or {}
     if baseline_meta.get("revision"):
         add(f"baseline revision {baseline_meta['revision']}, recorded when the baseline was saved")

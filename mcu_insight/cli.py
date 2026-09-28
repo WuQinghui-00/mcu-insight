@@ -444,6 +444,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
 
     baseline = checks_mod.load_baseline(baseline_path) if baseline_path else None
     baseline_meta = checks_mod.load_baseline_meta(baseline_path) if baseline_path else {}
+    baseline_shape = checks_mod.baseline_detail(baseline_path) if baseline_path else None
 
     with Store(db) as store:
         report = checks_mod.check_store(store, config, baseline, baseline_path)
@@ -452,6 +453,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
             note=args.note,
             metric_meta=config.get("metrics"),
             diff_since=args.diff_since, baseline_meta=baseline_meta,
+            baseline_detail=baseline_shape,
             patch_lines=args.patch_lines,
             build=build, partition=partition, project_dir=args.project,
             max_samples=args.max_samples,

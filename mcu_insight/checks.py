@@ -214,13 +214,41 @@ def save_baseline(store: Store, path: str | Path, meta: dict | None = None) -> d
     from, above all. A baseline that only carries numbers can say that
     something changed but not what it changed from, which is the difference
     between "the heap fell 66%" and "the heap fell 66% since this commit".
+
+    Each metric keeps its last value together with the extremes, the sample
+    count and the steady slope, and each device keeps the shape of the capture
+    it came from. Without that shape a comparison cannot tell a change from a
+    shorter soak: a high-water mark falls further the longer you watch it, so
+    "heap.min is 66% lower" means one thing when both captures ran 250 s and
+    something else when one ran 250 s and the other 108 s. A slope on both
+    sides answers the question on its own.
     """
     snapshot: dict = {}
     if meta:
         snapshot["_meta"] = dict(meta)
     for device in store.devices():
         stats = store.metric_stats(device)
-        snapshot[device] = {name: entry.last for name, entry in stats.items()}
+        metrics = {}
+        for name, entry in stats.items():
+            rate = slope_per_second(steady_samples(store.series(device, name))[1])
+            metrics[name] = {
+                "last": entry.last,
+                "min": entry.minimum,
+                "max": entry.maximum,
+                "count": entry.count,
+                "rate_per_s": None if rate is None else round(rate, 3),
+            }
+        uptimes = store.uptimes(device)
+        snapshot[device] = {
+            "capture": {
+                "frames": len(uptimes),
+                "boot_sessions": len(store.sessions(device)),
+                "steady_span_ms": round(
+                    steady_span_ms([(uptime, 0.0) for uptime in uptimes]), 1
+                ),
+            },
+            "metrics": metrics,
+        }
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(snapshot, indent=2, sort_keys=True), encoding="utf-8")
@@ -235,7 +263,43 @@ def load_baseline(path: str | Path) -> dict[str, dict[str, float]]:
     # Keys starting with an underscore are the baseline talking about itself,
     # not devices. Comparisons iterate over the devices they found in the
     # capture, so this was already harmless; being explicit keeps it that way.
-    return {key: value for key, value in data.items() if not key.startswith("_")}
+    baseline: dict[str, dict[str, float]] = {}
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue
+        if isinstance(value, dict) and "metrics" in value:
+            baseline[key] = {
+                name: (entry["last"] if isinstance(entry, dict) else entry)
+                for name, entry in value["metrics"].items()
+            }
+        else:
+            baseline[key] = value
+    return baseline
+
+
+def baseline_detail(path: str | Path) -> dict:
+    """The baseline as saved, with old flat files lifted into the new shape.
+
+    A file written before the shape existed has no capture block and no slope
+    per metric. Saying so is the point: a comparison that cannot see how long
+    the baseline ran cannot separate a change from a shorter soak.
+    """
+    baseline_path = Path(path)
+    if not baseline_path.is_file():
+        return {}
+    data = json.loads(baseline_path.read_text(encoding="utf-8"))
+    detail: dict = {}
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue
+        if isinstance(value, dict) and "metrics" in value:
+            detail[key] = value
+        else:
+            detail[key] = {
+                "capture": {},
+                "metrics": {name: {"last": number} for name, number in value.items()},
+            }
+    return detail
 
 
 def load_baseline_meta(path: str | Path) -> dict:
