@@ -1,5 +1,6 @@
 {
   "rules": [
+    {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
     {"metric": "heap.min", "min": 100000, "stat": "min"},
     {"metric": "task.main.stack_free_min", "min": 384, "stat": "min"},
     {"metric": "task.*.stack_free_min", "min": 256, "stat": "min"},

@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .store import Store
+from .trends import slope_per_second, steady_samples, steady_span_ms
 
 
 class ConfigError(ValueError):
@@ -47,7 +48,21 @@ class Rule:
     #: Skip the rule until the metric has at least this many samples: a running
     #: average restarted by a reboot is noise for the first minutes.
     min_samples: int = 0
-    #: Skip the rule until the metric has at least this many samples. A
+    #: Rate bounds, in units per second, for metrics whose *slope* is the thing
+    #: that matters. A high-water mark compared against a floor answers "how low
+    #: did it get", and that answer depends on how long the capture ran: an
+    #: identical leak passes a 60 s capture and fails a 250 s one. A slope
+    #: answers the same question whatever the duration.
+    min_rate_per_s: float | None = None
+    max_rate_per_s: float | None = None
+    #: Refuse to judge until the steady part of the capture is this long. Worth
+    #: setting on rate rules: a slope measured over ten seconds is noise, and
+    #: "not measured" is a more honest answer than a pass nobody established.
+    min_span_ms: float | None = None
+
+    @property
+    def is_rate(self) -> bool:
+        return self.min_rate_per_s is not None or self.max_rate_per_s is not None
 
     def matches(self, metric: str) -> bool:
         return fnmatch.fnmatchcase(metric, self.pattern)
@@ -60,11 +75,24 @@ class Rule:
         return entry.last
 
     def describe(self) -> str:
-        if self.stat != "last":
-            return f"{self.stat} " + self._bound_text()
-        return self._bound_text()
+        if self.is_rate:
+            text = self._bound_text()
+        elif self.stat != "last":
+            text = f"{self.stat} " + self._bound_text()
+        else:
+            text = self._bound_text()
+        if self.min_span_ms:
+            text += f" over >= {self.min_span_ms / 1000:g} s of steady state"
+        return text
 
     def _bound_text(self) -> str:
+        if self.is_rate:
+            if self.min_rate_per_s is not None and self.max_rate_per_s is not None:
+                return (f"{self.min_rate_per_s:g}/s <= slope <= "
+                        f"{self.max_rate_per_s:g}/s")
+            if self.min_rate_per_s is not None:
+                return f"slope >= {self.min_rate_per_s:g}/s"
+            return f"slope <= {self.max_rate_per_s:g}/s"
         if self.minimum is not None and self.maximum is not None:
             return f"{self.minimum:g} <= value <= {self.maximum:g}"
         if self.minimum is not None:
@@ -82,6 +110,8 @@ class Violation:
     device: str
 
     def describe(self) -> str:
+        if self.rule.is_rate:
+            return f"falls at {self.value:+,.1f} per second, {self.rule.describe()}"
         if self.rule.minimum is not None and self.value < self.rule.minimum:
             return f"{self.value:g} is below {self.rule.minimum:g}"
         if self.rule.maximum is not None and self.value > self.rule.maximum:
@@ -117,10 +147,16 @@ class CheckReport:
     changes: list[Change] = field(default_factory=list)
     baseline_path: Path | None = None
     new_metrics: list[str] = field(default_factory=list)
+    #: Rules that could not be judged, usually because the capture is shorter
+    #: than the rule requires. Kept apart from violations: "we did not measure
+    #: long enough to know" is a different answer from "it is fine".
+    unevaluated: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
-        return not self.violations
+        # Not judging a rule is not a pass. A build cannot be called green on
+        # the strength of a check that was never carried out.
+        return not self.violations and not self.unevaluated
 
 
 def load_config(path: str | Path) -> dict:
@@ -146,11 +182,16 @@ def parse_rules(config: dict) -> list[Rule]:
             raise ConfigError(f"rule needs a 'metric': {entry!r}")
         minimum = entry.get("min")
         maximum = entry.get("max")
-        if minimum is None and maximum is None:
-            raise ConfigError(f"rule needs 'min' or 'max': {entry!r}")
+        min_rate = entry.get("min_rate_per_s")
+        max_rate = entry.get("max_rate_per_s")
+        if minimum is None and maximum is None and min_rate is None and max_rate is None:
+            raise ConfigError(
+                f"rule needs 'min', 'max', 'min_rate_per_s' or 'max_rate_per_s': {entry!r}"
+            )
         stat = str(entry.get("stat", "last")).lower()
         if stat not in {"last", "min", "max"}:
             raise ConfigError(f"rule stat must be last, min or max: {entry!r}")
+        span = entry.get("min_span_ms")
         rules.append(
             Rule(
                 pattern=str(entry["metric"]),
@@ -158,6 +199,9 @@ def parse_rules(config: dict) -> list[Rule]:
                 maximum=None if maximum is None else float(maximum),
                 stat=stat,
                 min_samples=int(entry.get("min_samples", 0)),
+                min_rate_per_s=None if min_rate is None else float(min_rate),
+                max_rate_per_s=None if max_rate is None else float(max_rate),
+                min_span_ms=None if span is None else float(span),
             )
         )
     return rules
@@ -272,6 +316,29 @@ def check_store(
                     report.skipped_metrics.append(f"{device}:{name}")
                     continue
                 seen.add(f"{device}:{name}")
+                if rule.is_rate:
+                    points = store.series(device, name)
+                    span = steady_span_ms(points)
+                    if rule.min_span_ms and span < rule.min_span_ms:
+                        report.unevaluated.append(
+                            f"{device} {name}: {rule.describe()} -- the capture holds"
+                            f" only {span / 1000:.0f} s of steady state"
+                        )
+                        continue
+                    slope = slope_per_second(steady_samples(points)[1])
+                    if slope is None:
+                        report.skipped_metrics.append(f"{device}:{name}")
+                        continue
+                    bad = (
+                        rule.min_rate_per_s is not None and slope < rule.min_rate_per_s
+                    ) or (
+                        rule.max_rate_per_s is not None and slope > rule.max_rate_per_s
+                    )
+                    if bad:
+                        report.violations.append(
+                            Violation(metric=name, value=slope, rule=rule, device=device)
+                        )
+                    continue
                 value = rule.value_from(entry)
                 bad = (rule.minimum is not None and value < rule.minimum) or (
                     rule.maximum is not None and value > rule.maximum
@@ -335,6 +402,12 @@ def render(report: CheckReport, top: int = 12) -> str:
                 f"{change.current:>10,.0f}   {amount}"
             )
 
+    if report.unevaluated:
+        lines.append("")
+        lines.append(f"Not judged ({len(report.unevaluated)})")
+        for item in report.unevaluated:
+            lines.append(f"  ? {item}")
+
     if report.skipped_metrics:
         lines.append("")
         lines.append(
@@ -346,7 +419,13 @@ def render(report: CheckReport, top: int = 12) -> str:
         lines.append(f"{len(report.new_metrics)} metric(s) not present in the baseline")
 
     lines.append("")
-    lines.append("RESULT: " + ("FAIL" if not report.ok else "PASS"))
+    if report.violations:
+        verdict = "FAIL"
+    elif report.unevaluated:
+        verdict = f"INCOMPLETE ({len(report.unevaluated)} rule(s) not judged)"
+    else:
+        verdict = "PASS"
+    lines.append("RESULT: " + verdict)
     return "\n".join(lines)
 
 
@@ -356,6 +435,7 @@ def to_dict(report: CheckReport) -> dict:
         "devices": report.devices,
         "checked_metrics": report.checked_metrics,
         "skipped_metrics": report.skipped_metrics,
+        "unevaluated": report.unevaluated,
         "ok": report.ok,
         "violations": [
             {

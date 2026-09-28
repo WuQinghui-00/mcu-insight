@@ -326,6 +326,33 @@ the first sample with the last would report a 25 KB "leak" that is really the
 first second of the run. The checks are unaffected and still cover every frame,
 so nothing is hidden from the pass/fail verdict.
 
+## Thresholds and rates
+
+A rule can bound a value or a slope:
+
+```json
+{"metric": "heap.min", "min": 100000, "stat": "min"},
+{"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000}
+```
+
+The first is a floor. The second says the free heap may not fall faster than 64
+bytes per second, measured by least squares over the steady part of the newest
+boot session.
+
+Both are needed, for a reason worth stating plainly. `heap.min` is a high-water
+mark: it only ever falls, so a floor rule's verdict depends on how long the
+capture ran. A 100 B/s leak starting from 145 KB needs 450 s to cross a 100 KB
+floor, which means a two minute capture passes the level rule with the leak
+plainly present. A slope does not care about duration, which is why the fault
+matrix can catch an injected leak from a hundred second capture.
+
+`min_span_ms` is the other half. A slope measured over ten seconds is noise, so
+a rule can refuse to judge until it has enough steady state behind it. Refusing
+produces `INCOMPLETE`, not a pass, and `ok` is false: a build cannot be called
+green on the strength of a check that was never carried out.
+
+Slopes are measured after the boot warm-up and inside the newest boot session,
+the same way the report reads its trend cards.
 ## Diagnosis: the evidence pack
 
 Detection is arithmetic; explaining a detection is not. `diagnose` collects

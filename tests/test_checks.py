@@ -17,10 +17,12 @@ from mcu_insight.checks import (  # noqa: E402
     load_baseline_meta,
     load_config,
     parse_rules,
+    render,
     save_baseline,
     to_dict,
 )
 from mcu_insight.simulator import iter_frames  # noqa: E402
+from mcu_insight.trends import slope_per_second, steady_span_ms  # noqa: E402
 from mcu_insight.store import Store  # noqa: E402
 from mcu_insight.telemetry import parse_frame  # noqa: E402
 
@@ -54,6 +56,78 @@ class CheckTest(unittest.TestCase):
         return path
 
     # -- rules ---------------------------------------------------------
+    def heap_capture(self, values, interval_ms: float = 1000.0) -> Store:
+        """A capture whose heap follows a chosen series, frame by frame."""
+        store = Store(self.dir / "series.db")
+        self._stores.append(store)
+        for index, value in enumerate(values):
+            frame = {
+                "v": 1, "device": "test", "fw": "t", "seq": index,
+                "uptime_ms": index * interval_ms,
+                "heap": {"free": value, "min": value, "largest": value - 1000},
+            }
+            store.add(parse_frame(json.dumps(frame)))
+        return store
+
+    def rate_config(self, path: Path) -> dict:
+        payload = {"rules": [
+            {"metric": "heap.min", "min": 100000, "stat": "min"},
+            {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000},
+        ]}
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return load_config(path)
+
+    def test_slope_is_units_per_second(self):
+        self.assertAlmostEqual(-100.0, slope_per_second(
+            [(0.0, 1000.0), (1000.0, 900.0), (2000.0, 800.0)]))
+        self.assertIsNone(slope_per_second([(0.0, 1.0)]))
+        self.assertIsNone(slope_per_second([(0.0, 1.0), (0.0, 2.0)]))
+
+    def test_a_rate_rule_describes_itself_in_plain_units(self):
+        rule = parse_rules({"rules": [
+            {"metric": "heap.free", "min_rate_per_s": -64, "min_span_ms": 60000}]})[0]
+        self.assertTrue(rule.is_rate)
+        self.assertEqual("slope >= -64/s over >= 60 s of steady state", rule.describe())
+
+    def test_a_rule_with_no_bound_at_all_is_rejected(self):
+        with self.assertRaises(ConfigError):
+            parse_rules({"rules": [{"metric": "heap.free"}]})
+
+    def test_a_slow_leak_is_caught_where_the_floor_rule_cannot(self):
+        # 100 B/s from 145,000 B: the floor at 100,000 needs 450 s to trip, so a
+        # two minute capture satisfies the level rule with the leak plainly
+        # there. This is the hole all three model answers pointed at.
+        store = self.heap_capture([145000.0 - 100.0 * index for index in range(120)])
+        config = self.rate_config(self.dir / "rate.json")
+        report = check_store(store, config)
+
+        metrics = [violation.metric for violation in report.violations]
+        self.assertIn("heap.free", metrics)
+        self.assertNotIn("heap.min", metrics, "the floor is still satisfied")
+        self.assertAlmostEqual(-100.0, report.violations[0].value, places=0)
+        self.assertIn("falls at", report.violations[0].describe())
+
+    def test_a_capture_too_short_to_measure_a_slope_is_not_a_pass(self):
+        # Forty seconds is not enough to measure a slope in, and saying so is
+        # the point: not judged must not read as green.
+        store = self.heap_capture([145000.0 - 100.0 * index for index in range(40)])
+        config = self.rate_config(self.dir / "short.json")
+        report = check_store(store, config)
+
+        self.assertEqual([], report.violations)
+        self.assertTrue(report.unevaluated)
+        self.assertFalse(report.ok)
+        self.assertIn("only 29 s of steady state", report.unevaluated[0])
+        self.assertIn("INCOMPLETE", render(report))
+
+    def test_a_long_enough_quiet_capture_passes_both_rules(self):
+        store = self.heap_capture([145000.0 + (5.0 if index % 2 else -5.0)
+                                   for index in range(120)])
+        config = self.rate_config(self.dir / "quiet.json")
+        report = check_store(store, config)
+        self.assertEqual([], report.violations)
+        self.assertEqual([], report.unevaluated)
+        self.assertTrue(report.ok)
     def test_a_baseline_can_record_which_revision_it_describes(self):
         store = self.store_for("steady")
         path = self.dir / "baseline.json"

@@ -16,6 +16,13 @@ from pathlib import Path
 
 from .analysis import ImageReport
 from .checks import CheckReport, change_verdict, regression_direction
+from .trends import (
+    BOOT_WARMUP_MS,
+    boot_boundaries,
+    capture_axis,
+    steady_delta,
+    steady_samples,
+)
 from .store import Store
 
 #: Metric families worth a trend card, in display order.
@@ -28,53 +35,6 @@ TREND_HINTS = (
     "model_accuracy",
     "arena_used",
 )
-
-#: Samples taken inside this window after a boot are start-up, not steady state:
-#: Wi-Fi, MQTT and the telemetry task are still allocating, so a "historical
-#: minimum" metric such as heap.min is still sitting at its post-boot peak.
-#: Those samples stay on the chart but are kept out of the card statistics.
-BOOT_WARMUP_MS = 10_000.0
-
-
-def boot_boundaries(points: list[tuple[float, float]]) -> list[int]:
-    """Indices where a new boot session starts, i.e. uptime went backwards."""
-    return [i for i in range(1, len(points)) if points[i][0] < points[i - 1][0]]
-
-
-def steady_delta(points: list[tuple[float, float]]) -> float:
-    """Change across the steady part of the newest boot session."""
-    _, steady = steady_samples(points)
-    return steady[-1][1] - steady[0][1]
-
-
-def capture_axis(points: list[tuple[float, float]]) -> list[float]:
-    """x values that keep increasing across a reset.
-
-    ``uptime_ms`` restarts at zero after a reboot, so plotting it directly makes
-    the line jump backwards and puts the reboot marker at the left edge next to
-    the start of the first session. Carrying the elapsed time over keeps the
-    chart readable and puts the marker where the reset actually happened.
-    """
-    axis = []
-    offset = 0.0
-    previous: float | None = None
-    for uptime, _ in points:
-        if previous is not None and uptime < previous:
-            offset += previous
-        axis.append(uptime + offset)
-        previous = uptime
-    return axis
-
-
-def steady_samples(
-    points: list[tuple[float, float]], warmup_ms: float = BOOT_WARMUP_MS
-) -> tuple[int, list[tuple[float, float]]]:
-    """Return (start of the newest boot session, samples that are steady state)."""
-    starts = [0] + boot_boundaries(points)
-    begin = starts[-1]
-    session = points[begin:]
-    steady = [p for p in session if p[0] - session[0][0] >= warmup_ms]
-    return begin, steady or session
 
 STYLE = """
 :root { color-scheme: light; }
@@ -95,6 +55,7 @@ section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
 .card .range { color: #6b7280; font-size: 11px; font-family: ui-monospace, monospace; }
 .pass { color: #067647; background: #ecfdf3; border-color: #abefc6; }
 .fail { color: #b42318; background: #fef3f2; border-color: #fecdca; }
+.warn { color: #b54708; background: #fffaeb; border-color: #fedf89; }
 .badge { display: inline-block; font: 600 11px/1 ui-monospace, monospace; padding: 5px 8px;
          border: 1px solid; border-radius: 6px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -196,9 +157,14 @@ def _checks_block(report: CheckReport) -> str:
             f'<tr><td class="name">{_esc(rule.pattern)}</td>'
             f'<td class="name">{_esc(rule.describe())}</td></tr>'
         )
+    if report.unevaluated and not report.violations:
+        badge, label = "warn", "INCOMPLETE"
+    elif report.ok:
+        badge, label = "pass", "PASS"
+    else:
+        badge, label = "fail", "FAIL"
     body = [
-        f'<p><span class="badge {"pass" if report.ok else "fail"}">'
-        f'{"PASS" if report.ok else "FAIL"}</span> '
+        f'<p><span class="badge {badge}">{label}</span> '
         f'<span class="note">{len(report.rules)} rules · '
         f'{report.checked_metrics} metrics evaluated</span></p>'
     ]
@@ -212,6 +178,11 @@ def _checks_block(report: CheckReport) -> str:
         body.append("</table>")
     else:
         body.append('<p class="note">No threshold violations.</p>')
+    if report.unevaluated:
+        body.append("<table><tr><th>Not judged</th><th>Reason</th></tr>")
+        for item in report.unevaluated:
+            body.append(f'<tr><td class="name">{_esc(item)}</td></tr>')
+        body.append("</table>")
     if rows:
         body.append('<table><tr><th>Rule</th><th>Bound</th></tr>' + "".join(rows) + "</table>")
     return "".join(body)
