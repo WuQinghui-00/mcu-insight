@@ -24,6 +24,7 @@ section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .card { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; }
 .card .step { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 8px; }
+.card .where { font: 11.5px/1 ui-monospace, monospace; color: #6b7280; margin-bottom: 6px; }
 pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13px;
       overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
       margin: 8px 0 0; white-space: pre; }
@@ -50,7 +51,8 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <div class="card"><h3>设备实际在干什么</h3><p class="note">每个任务的栈高水位、堆最小空闲和最大可分配块、每核空闲占比、延迟分位数、睡眠占比——固件报什么就能看什么。</p></div>
 <div class="card"><h3>这次改动有没有让它变差</h3><p class="note">可以约束数值、也可以约束斜率的预算规则，与基线快照的对比，以及需要解释时给模型用的证据包。</p></div>
 </div></section>
-<section><h2>新工程上的四步</h2><div class=grid><div class="card"><div class="step">1</div><h3>把设备端 agent 拷进去</h3><p class="note">就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，所以这条命令把它拷过去并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre></div><div class="card"><div class="step">2</div><h3>采集</h3><p class="note">遥测帧追加进一个 SQLite 文件，之后所有命令读文件而不是读板子。同一个串口上的日志行会被自动忽略。</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - telemetry summary
+<section><h2>新工程上的四步</h2><div class=grid><div class="card"><div class="step">1</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>把设备端 agent 拷进去</h3><p class="note">就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，所以这条命令把它拷过去并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><p class="note">然后在固件工程里照常编译烧写：</p><pre class="run">cd ..\My-Project
+idf.py -p COM19 flash monitor</pre></div><div class="card"><div class="step">2</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>采集</h3><p class="note">遥测帧追加进一个 SQLite 文件，之后所有命令读文件而不是读板子。同一个串口上的日志行会被自动忽略。</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices
@@ -61,7 +63,7 @@ Metric trends (esp32-signal-processor, 21 frames)
   custom.inference_us                     1,320 -&gt;        954   change -366
   task.telemetry.stack_free_min           2,408 -&gt;      2,184   change -224
   custom.infer_min_us                     1,165 -&gt;        946   change -219
-...</pre></div><div class="card"><div class="step">3</div><h3>判定</h3><p class="note">退出码 0 表示通过，1 表示不通过或规则无法判定，所以可以直接卡 CI。</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - resource checks
+...</pre></div><div class="card"><div class="step">3</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>判定</h3><p class="note">退出码 0 表示通过，1 表示不通过或规则无法判定，所以可以直接卡 CI。</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">回来长什么样</p><pre class="out">MCU-Insight - resource checks
 database  : captures\fault-heap.db
 devices   : esp32-signal-processor
 rules     : 7   metrics matched: 21
@@ -86,7 +88,24 @@ Changed since baseline (budgets\signal_baseline.json)
 
 RESULT: FAIL
 
-同样的命令在健康的采集上会打印 RESULT: PASS 并以 0 退出。</pre></div><div class="card"><div class="step">4</div><h3>看结果</h3><p class="note">一个自包含 HTML 文件：数据内联、图表是手写 SVG，没有服务器、没有 CDN、没有脚本。</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div></section>
+同样的命令在健康的采集上会打印 RESULT: PASS 并以 0 退出。</pre></div><div class="card"><div class="step">4</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>看结果</h3><p class="note">一个自包含 HTML 文件：数据内联、图表是手写 SVG，没有服务器、没有 CDN、没有脚本。</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div>
+<p class="note" style="margin-top:16px">这条命令会把 report.html 写到你运行命令的那个目录里。双击它，或者从文件管理器打开。下面链接的这份报告就是这么来的，用的是本仓库里已提交的那次采集： <a href="report-demo.html">docs/report-demo.html</a></p></section>
+<section><h2>每个东西在哪</h2><p class="note">四条命令都在工具仓库里运行。你的固件工程是它的邻居：第一步把 agent 拷进去，报告那一步读的是那个工程的构建产物。</p><div class=grid>
+<div class="card"><pre class="out">mcu-insight\   工具仓库，所有命令在这里运行
+  mcu_insight\    包的代码
+  tools\          sync_firmware.py、fault_matrix.py
+  budgets\        你的预算文件放这里
+  captures\       采集到的遥测落这里（*.db）
+  docs\           index.html、report-demo.html、各种指南</pre></div>
+<div class="card"><pre class="out">My-Project\   你的固件工程，和工具仓库并排
+  components\
+    mcu_telemetry\   ← 第一步拷贝到这里
+      CMakeLists.txt
+      include/mcu_telemetry.h
+      mcu_telemetry.c
+  main\main.c      ← 第一步加的那五行
+  build\           .map 和 .bin 从这里读</pre></div>
+</div></section>
 <section><h2>你自己的工程要加什么</h2><p class="note">五行 C 代码，加一个 JSON 文件——它说明预算是什么、每个指标是什么意思。</p>
 <div class="grid">
 <div><pre class="run">#include &quot;mcu_telemetry.h&quot;

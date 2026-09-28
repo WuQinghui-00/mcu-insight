@@ -44,6 +44,7 @@ section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .card { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; }
 .card .step { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 8px; }
+.card .where { font: 11.5px/1 ui-monospace, monospace; color: #6b7280; margin-bottom: 6px; }
 pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13px;
       overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
       margin: 8px 0 0; white-space: pre; }
@@ -107,6 +108,11 @@ def pick_build(map_path: Path | None, bin_path: Path | None):
 def collect(map_path: Path | None, bin_path: Path | None, project: Path | None) -> dict:
     mapping, binary = pick_build(map_path, bin_path)
     firmware = project or (DEFAULT_PROJECT if DEFAULT_PROJECT.is_dir() else None)
+    component = REPO_ROOT / "firmware" / "esp-idf" / "mcu_telemetry"
+    component_files = [
+        str(path.relative_to(component)).replace("\\", "/")
+        for path in sorted(component.rglob("*")) if path.is_file()
+    ]
 
     analyze = ["analyze", str(mapping), "--partition", "1500K"]
     if binary:
@@ -126,6 +132,7 @@ def collect(map_path: Path | None, bin_path: Path | None, project: Path | None) 
         "model": take(run("model", "training/out/waveform_model_real.tflite"), 9),
         "evidence": take(run(*diagnose), 9),
         "answer": paragraph_containing(ANSWERS / "round-3.md", "s_leak_sink = malloc(2048)"),
+        "component_files": component_files,
         "audit": run("audit", "--pack", str(PROMPTS / "round-3.txt"),
                      "--answer", str(ANSWERS / "round-3.md")),
     }
@@ -176,6 +183,16 @@ TEXT = {
         "q3_d": "Budget rules that bound a value or a slope, a comparison against a "
                 "stored baseline, and an evidence pack when something needs explaining.",
         "steps": "Four steps on a new project",
+        "run_here": "run in mcu-insight\\",
+        "where": "Where everything lives",
+        "where_d": "All four commands run in the tool repository. Your firmware project is a neighbour: step 1 copies the agent into it, and the report step reads that project's build output.",
+        "where_tool": "mcu-insight\\   the tool, run every command here",
+        "where_tool_tree": "  mcu_insight\\    the package\n  tools\\          sync_firmware.py, fault_matrix.py\n  budgets\\        your budget files go here\n  captures\\       captured telemetry lands here (*.db)\n  docs\\           index.html, report-demo.html, the guides",
+        "where_fw": "My-Project\\   your firmware, next to the tool",
+        "where_fw_top": "  components\\\n    mcu_telemetry\\   <- step 1 writes this directory",
+        "where_fw_bottom": "  main\\main.c      <- the five lines from step 1\n  build\\           .map and .bin are read from here",
+        "s1_flash": "then build and flash it as usual, from the firmware project:",
+        "s4_open": "The command writes report.html into the directory you ran it from. Double-click it, or open it from the file manager. The report linked here was made the same way, from the capture committed in this repository:",
         "s1_t": "Copy the device agent in",
         "s1_d": "One ESP-IDF component. ESP-IDF wants components inside the project "
                 "tree, so this copies it there and tells you what it wrote.",
@@ -238,6 +255,16 @@ TEXT = {
         "q3_d": "可以约束数值、也可以约束斜率的预算规则，与基线快照的对比，"
                 "以及需要解释时给模型用的证据包。",
         "steps": "新工程上的四步",
+        "run_here": "在 mcu-insight\\ 目录里运行",
+        "where": "每个东西在哪",
+        "where_d": "四条命令都在工具仓库里运行。你的固件工程是它的邻居：第一步把 agent 拷进去，报告那一步读的是那个工程的构建产物。",
+        "where_tool": "mcu-insight\\   工具仓库，所有命令在这里运行",
+        "where_tool_tree": "  mcu_insight\\    包的代码\n  tools\\          sync_firmware.py、fault_matrix.py\n  budgets\\        你的预算文件放这里\n  captures\\       采集到的遥测落这里（*.db）\n  docs\\           index.html、report-demo.html、各种指南",
+        "where_fw": "My-Project\\   你的固件工程，和工具仓库并排",
+        "where_fw_top": "  components\\\n    mcu_telemetry\\   ← 第一步拷贝到这里",
+        "where_fw_bottom": "  main\\main.c      ← 第一步加的那五行\n  build\\           .map 和 .bin 从这里读",
+        "s1_flash": "然后在固件工程里照常编译烧写：",
+        "s4_open": "这条命令会把 report.html 写到你运行命令的那个目录里。双击它，或者从文件管理器打开。下面链接的这份报告就是这么来的，用的是本仓库里已提交的那次采集：",
         "s1_t": "把设备端 agent 拷进去",
         "s1_d": "就是一个 ESP-IDF 组件。ESP-IDF 要求组件在工程树内，"
                 "所以这条命令把它拷过去并告诉你写了哪些文件。",
@@ -283,8 +310,10 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
     def pre(text: str, cls: str = "out") -> str:
         return f'<pre class="{cls}">{html.escape(text)}</pre>' if text else ""
 
-    def card(step: str, title: str, note: str, command: str, output: str = "") -> str:
+    def card(step: str, title: str, note: str, command: str, output: str = "",
+             where: str = "") -> str:
         body = [f'<div class="card"><div class="step">{step}</div>',
+                (f'<div class="where">{where}</div>' if where else ""),
                 f"<h3>{title}</h3>", f'<p class="note">{note}</p>',
                 pre(command, "run")]
         if output:
@@ -293,17 +322,29 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         return "".join(body)
 
     steps = "".join([
-        card("1", c["s1_t"], c["s1_d"], "python tools/sync_firmware.py ..\\My-Project"),
+        '<div class="card"><div class="step">1</div>'
+        + f'<div class="where">{c["run_here"]}</div>'
+        + f'<h3>{c["s1_t"]}</h3><p class="note">{c["s1_d"]}</p>'
+        + pre("python tools/sync_firmware.py ..\\My-Project", "run")
+        + f'<p class="note">{c["s1_flash"]}</p>'
+        + pre("cd ..\\My-Project\nidf.py -p COM19 flash monitor", "run")
+        + "</div>",
         card("2", c["s2_t"], c["s2_d"],
              "python -m mcu_insight collect --db captures/board.db --source serial:COM19",
-             facts["summary"]),
+             facts["summary"], c["run_here"]),
         card("3", c["s3_t"], c["s3_d"],
              "python -m mcu_insight check --db captures/board.db --config budgets/my-project.json",
-             facts["check_fail"] + "\n\n" + c["s3_pass"]),
+             facts["check_fail"] + "\n\n" + c["s3_pass"], c["run_here"]),
         card("4", c["s4_t"], c["s4_d"],
              "python -m mcu_insight report --db captures/board.db --config budgets/my-project.json "
-             "--out report.html"),
+             "--out report.html", where=c["run_here"]),
     ])
+
+    fw_tree = "\n".join(
+        [c["where_fw"], c["where_fw_top"]]
+        + [f"      {name}" for name in facts["component_files"]]
+        + [c["where_fw_bottom"]]
+    )
 
     rows = "".join(
         f"<tr><td>{name}</td><td>{body}</td></tr>"
@@ -337,7 +378,13 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         f'<div class="card"><h3>{c["q2_t"]}</h3><p class="note">{c["q2_d"]}</p></div>',
         f'<div class="card"><h3>{c["q3_t"]}</h3><p class="note">{c["q3_d"]}</p></div>',
         "</div></section>",
-        f"<section><h2>{c['steps']}</h2><div class=grid>{steps}</div></section>",
+        f"<section><h2>{c['steps']}</h2><div class=grid>{steps}</div>",
+        f'<p class="note" style="margin-top:16px">{c["s4_open"]} '
+        f'<a href="report-demo.html">docs/report-demo.html</a></p></section>',
+        f"<section><h2>{c['where']}</h2><p class=\"note\">{c['where_d']}</p><div class=grid>",
+        '<div class="card">' + pre(c["where_tool"] + "\n" + c["where_tool_tree"]) + "</div>",
+        '<div class="card">' + pre(fw_tree) + "</div>",
+        "</div></section>",
         f"<section><h2>{c['add']}</h2><p class=\"note\">{c['add_d']}</p>",
         '<div class="grid">',
         "<div>" + pre(C_SNIPPET, "run") + "</div>",

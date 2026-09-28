@@ -23,6 +23,7 @@ FACTS = {
     "evidence": "[E1] device board\n[E2] capture 21 frames",
     "answer": "The leak is s_leak_sink = malloc(2048) once per loop [E98].",
     "audit": "citations   : 50 distinct of 126 in the pack\nRESULT: OK",
+    "component_files": ["CMakeLists.txt", "include/mcu_telemetry.h", "mcu_telemetry.c"],
 }
 
 
@@ -61,6 +62,20 @@ class GuidePageTest(unittest.TestCase):
         self.assertNotIn("<script", page)
         self.assertIn("&lt;script&gt;", page)
 
+    def test_the_copied_file_list_comes_from_the_component(self):
+        # The list of files step 1 writes is read from the component itself,
+        # so a new file in the agent shows up on the page without editing it.
+        page = render("en", {**FACTS, "component_files": ["CMakeLists.txt", "mcu_telemetry.c"]})
+        self.assertIn("CMakeLists.txt", page)
+        self.assertIn("mcu_telemetry.c", page)
+        self.assertIn("step 1 writes this directory", page)
+
+    def test_every_step_says_which_directory_it_belongs_in(self):
+        page = render("en", FACTS)
+        self.assertEqual(4, page.count('class="where"'), "one badge per step")
+
+    def test_the_page_links_to_a_report_you_can_open(self):
+        self.assertIn('href="report-demo.html"', render("en", FACTS))
     def test_take_says_when_it_dropped_lines(self):
         self.assertEqual("a\nb\n...", take("a\nb\nc\nd", 2))
         self.assertEqual("a\nb", take("a\nb", 5))

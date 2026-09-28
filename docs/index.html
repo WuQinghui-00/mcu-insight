@@ -24,6 +24,7 @@ section { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
 .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .card { border: 1px solid #eef0f3; border-radius: 8px; padding: 14px 16px; }
 .card .step { font: 600 12px/1 ui-monospace, monospace; color: #2563eb; margin-bottom: 8px; }
+.card .where { font: 11.5px/1 ui-monospace, monospace; color: #6b7280; margin-bottom: 6px; }
 pre { background: #0f172a; color: #e2e8f0; border-radius: 7px; padding: 11px 13px;
       overflow-x: auto; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
       margin: 8px 0 0; white-space: pre; }
@@ -50,7 +51,8 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <div class="card"><h3>What is the device doing</h3><p class="note">Stack high-water marks per task, the smallest free heap and the largest free block, per-core idle share, latency percentiles, sleep residency: whatever the firmware publishes.</p></div>
 <div class="card"><h3>Did the change make it worse</h3><p class="note">Budget rules that bound a value or a slope, a comparison against a stored baseline, and an evidence pack when something needs explaining.</p></div>
 </div></section>
-<section><h2>Four steps on a new project</h2><div class=grid><div class="card"><div class="step">1</div><h3>Copy the device agent in</h3><p class="note">One ESP-IDF component. ESP-IDF wants components inside the project tree, so this copies it there and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre></div><div class="card"><div class="step">2</div><h3>Capture</h3><p class="note">Frames are appended to a SQLite file, so every command after this reads the file instead of the board. Log lines on the same port are ignored.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
+<section><h2>Four steps on a new project</h2><div class=grid><div class="card"><div class="step">1</div><div class="where">run in mcu-insight\</div><h3>Copy the device agent in</h3><p class="note">One ESP-IDF component. ESP-IDF wants components inside the project tree, so this copies it there and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><p class="note">then build and flash it as usual, from the firmware project:</p><pre class="run">cd ..\My-Project
+idf.py -p COM19 flash monitor</pre></div><div class="card"><div class="step">2</div><div class="where">run in mcu-insight\</div><h3>Capture</h3><p class="note">Frames are appended to a SQLite file, so every command after this reads the file instead of the board. Log lines on the same port are ignored.</p><pre class="run">python -m mcu_insight collect --db captures/board.db --source serial:COM19</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
 database  : captures\fault-off.db
 
 Devices
@@ -61,7 +63,7 @@ Metric trends (esp32-signal-processor, 21 frames)
   custom.inference_us                     1,320 -&gt;        954   change -366
   task.telemetry.stack_free_min           2,408 -&gt;      2,184   change -224
   custom.infer_min_us                     1,165 -&gt;        946   change -219
-...</pre></div><div class="card"><div class="step">3</div><h3>Judge</h3><p class="note">The exit code is 0 for a pass, 1 for a failure or a rule that could not be judged, so CI can gate on it.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
+...</pre></div><div class="card"><div class="step">3</div><div class="where">run in mcu-insight\</div><h3>Judge</h3><p class="note">The exit code is 0 for a pass, 1 for a failure or a rule that could not be judged, so CI can gate on it.</p><pre class="run">python -m mcu_insight check --db captures/board.db --config budgets/my-project.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
 database  : captures\fault-heap.db
 devices   : esp32-signal-processor
 rules     : 7   metrics matched: 21
@@ -86,7 +88,24 @@ Changed since baseline (budgets\signal_baseline.json)
 
 RESULT: FAIL
 
-On a healthy capture the same command prints RESULT: PASS and exits 0.</pre></div><div class="card"><div class="step">4</div><h3>Look at it</h3><p class="note">One self-contained HTML file: data inlined, charts hand-written SVG, no server, no CDN, no script.</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div></section>
+On a healthy capture the same command prints RESULT: PASS and exits 0.</pre></div><div class="card"><div class="step">4</div><div class="where">run in mcu-insight\</div><h3>Look at it</h3><p class="note">One self-contained HTML file: data inlined, charts hand-written SVG, no server, no CDN, no script.</p><pre class="run">python -m mcu_insight report --db captures/board.db --config budgets/my-project.json --out report.html</pre></div></div>
+<p class="note" style="margin-top:16px">The command writes report.html into the directory you ran it from. Double-click it, or open it from the file manager. The report linked here was made the same way, from the capture committed in this repository: <a href="report-demo.html">docs/report-demo.html</a></p></section>
+<section><h2>Where everything lives</h2><p class="note">All four commands run in the tool repository. Your firmware project is a neighbour: step 1 copies the agent into it, and the report step reads that project's build output.</p><div class=grid>
+<div class="card"><pre class="out">mcu-insight\   the tool, run every command here
+  mcu_insight\    the package
+  tools\          sync_firmware.py, fault_matrix.py
+  budgets\        your budget files go here
+  captures\       captured telemetry lands here (*.db)
+  docs\           index.html, report-demo.html, the guides</pre></div>
+<div class="card"><pre class="out">My-Project\   your firmware, next to the tool
+  components\
+    mcu_telemetry\   &lt;- step 1 writes this directory
+      CMakeLists.txt
+      include/mcu_telemetry.h
+      mcu_telemetry.c
+  main\main.c      &lt;- the five lines from step 1
+  build\           .map and .bin are read from here</pre></div>
+</div></section>
 <section><h2>What you add to your own project</h2><p class="note">Five lines of C, and one JSON file that says what the budgets are and what the metrics mean.</p>
 <div class="grid">
 <div><pre class="run">#include &quot;mcu_telemetry.h&quot;
