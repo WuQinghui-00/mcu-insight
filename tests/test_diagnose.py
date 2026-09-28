@@ -31,11 +31,14 @@ from mcu_insight.diagnose import (  # noqa: E402
     fit_pack,
     gather_evidence,
     metric_kind,
+    pack_metric_names,
+    pack_metric_prefixes,
     metric_label,
     metric_meaning as metric_meaning_for,
     metric_unit,
     pack_evidence_ids,
     read_sdkconfig,
+    render_audit,
     render_evidence,
     resolve_diff_since,
     sample_series,
@@ -433,11 +436,28 @@ class AuditTest(TempWorkspace, unittest.TestCase):
         self.assertEqual(["E99"], result["unknown_ids"])
         self.assertFalse(result["ok"])
 
-    def test_invented_metric_name_is_caught(self):
+    def test_an_invented_metric_is_flagged_as_a_warning_not_a_failure(self):
+        # The name check is a heuristic: three real answers tripped it by
+        # naming a path, a labelled line, or a task. It warns.
         result = audit_answer("The custom.heap_fragmentation_index is over budget [E2].",
                               self.pack_text())
         self.assertEqual(["custom.heap_fragmentation_index"], result["unknown_metrics"])
+        self.assertTrue(result["ok"])
+
+    def test_a_task_prefix_is_not_an_invented_metric(self):
+        result = audit_answer("The task.monitor task sits at 1,950 B [E2].", self.pack_text())
+        self.assertEqual([], result["unknown_metrics"])
+        self.assertTrue(result["ok"])
+
+    def test_a_fabricated_id_is_still_an_error(self):
+        result = audit_answer("The pack proves it [E404].", self.pack_text())
         self.assertFalse(result["ok"])
+        self.assertIn("does not exist", render_audit(result))
+
+    def test_prefixes_of_known_names_are_known(self):
+        names = {"task.wifi.stack_free_min", "heap.min"}
+        self.assertEqual({"task", "task.wifi", "heap"}, pack_metric_prefixes(names))
+        self.assertIn("task.wifi", pack_metric_names("metric task.wifi.stack_free_min (B): 1") | pack_metric_prefixes(names))
 
     def test_paths_are_not_mistaken_for_metrics(self):
         # Real false positives from a real answer: a capture file and a build

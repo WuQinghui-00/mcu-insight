@@ -568,6 +568,19 @@ def pack_evidence_ids(evidence_text: str) -> set[str]:
     return {f"E{int(match)}" for match in CITATION.findall(evidence_text)}
 
 
+def pack_metric_prefixes(names: set[str]) -> set[str]:
+    """Every dotted prefix of a known name: ``task.wifi`` for
+    ``task.wifi.stack_free_min``. An answer that says "the task.wifi task" is
+    referring to something the pack knows, not inventing a metric.
+    """
+    prefixes = set()
+    for name in names:
+        parts = name.split(".")
+        for index in range(1, len(parts)):
+            prefixes.add(".".join(parts[:index]))
+    return prefixes
+
+
 def pack_metric_families(evidence_text: str) -> set[str]:
     """First segment of every metric name in the pack: heap, task, custom, ..."""
     families = set()
@@ -630,7 +643,7 @@ def audit_answer(answer: str, evidence_text: str) -> dict:
     a claim with no citation at all.
     """
     known_ids = pack_evidence_ids(evidence_text)
-    known_names = pack_metric_names(evidence_text)
+    known_names = pack_metric_names(evidence_text) | pack_metric_prefixes(pack_metric_names(evidence_text))
     families = pack_metric_families(evidence_text)
 
     cited = [f"E{int(match)}" for match in CITATION.findall(answer)]
@@ -641,13 +654,17 @@ def audit_answer(answer: str, evidence_text: str) -> dict:
         if token.split(".")[0] in families and not looks_like_a_file(token)
     }
     unknown_metrics = sorted(
-        token for token in mentioned if token not in known_names and token not in families
+        token for token in mentioned if token not in known_names
     )
 
     uncited = [claim[:120] for claim in _claims(answer) if not CITATION.search(claim)]
 
     return {
-        "ok": not unknown_ids and not unknown_metrics,
+        # A fabricated id is unambiguous: the pack has no such line. An
+        # unknown name is a heuristic, and three of the four answers that
+        # tripped it were referring to a path, a labelled line, or a task.
+        # Heuristics warn; only ids fail.
+        "ok": not unknown_ids,
         "citations": {"total": len(cited), "unique": len(set(cited))},
         "unknown_ids": unknown_ids,
         "unknown_metrics": unknown_metrics,
@@ -667,14 +684,18 @@ def render_audit(result: dict) -> str:
         lines.append("unknown id  : none")
     if result["unknown_metrics"]:
         lines.append("unknown name: " + ", ".join(result["unknown_metrics"])
-                     + "  <- no such metric in the pack")
+                     + "  <- warning: no such metric in the pack")
     else:
         lines.append("unknown name: none")
     lines.append(f"uncited line: {len(result['uncited_lines'])} (a warning, not an error)")
     for line in result["uncited_lines"]:
         lines.append(f"    {line}")
+    warnings = len(result["unknown_metrics"]) + len(result["uncited_lines"])
     lines.append("")
-    lines.append("RESULT: " + ("OK" if result["ok"] else "the answer cites evidence that does not exist"))
+    if result["ok"]:
+        lines.append("RESULT: OK" + (f" with {warnings} warning(s)" if warnings else ""))
+    else:
+        lines.append("RESULT: the answer cites an evidence id that does not exist")
     return "\n".join(lines) + "\n"
 
 PROMPT = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
