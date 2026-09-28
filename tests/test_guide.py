@@ -147,6 +147,15 @@ class GuidePageTest(unittest.TestCase):
         text = tidy(f"map : {DEFAULT_PROJECT}\\build\\app.map and {REPO_ROOT}\\docs")
         self.assertNotIn("ESP32-FAE", text)
         self.assertIn("build\\app.map", text)
+    def test_markdown_links_go_to_github_when_a_repository_is_known(self):
+        # Pages serves .md as plain text; GitHub renders it.
+        page = render("en", FACTS, "https://github.com/me/mcu-insight")
+        self.assertIn('href="https://github.com/me/mcu-insight/blob/main/docs/using-it.md"', page)
+        self.assertIn('href="report-demo.html"', page, "real HTML stays relative")
+
+    def test_without_a_repository_the_links_stay_relative(self):
+        page = render("en", FACTS)
+        self.assertIn('href="using-it.md"', page)
     def test_take_says_when_it_dropped_lines(self):
         self.assertEqual("a\nb\n...", take("a\nb\nc\nd", 2))
         self.assertEqual("a\nb", take("a\nb", 5))

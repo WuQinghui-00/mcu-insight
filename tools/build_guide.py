@@ -426,6 +426,12 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
     c = TEXT[lang]
     labels = LABELS[lang]
     other_label, other_href = labels["other"]
+    # A .md file served by Pages is plain text; GitHub renders it. So when a
+    # repository url is known, prose links go there and only real HTML stays
+    # relative.
+    blob = f"{repo}/blob/main/docs/" if repo else ""
+    guide_href = f"{blob}using-it.md" if repo else "using-it.md"
+    case_href = f"{blob}diagnosis-case-study.md" if repo else "diagnosis-case-study.md"
     snippet = C_MIN_ZH if lang == "zh" else C_MIN_EN
     optional = C_OPT_ZH if lang == "zh" else C_OPT_EN
 
@@ -508,8 +514,8 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         "<h1>MCU-Insight</h1>",
         "<nav>",
         (f'<a href="{repo}">{labels["repo"]}</a>' if repo else ""),
-        f'<a href="using-it.md">{labels["guide"]}</a>',
-        f'<a href="diagnosis-case-study.md">{labels["case"]}</a>',
+        f'<a href="{guide_href}">{labels["guide"]}</a>',
+        f'<a href="{case_href}">{labels["case"]}</a>',
         f'<a href="report-demo.html">{labels["report"]}</a>',
         "</nav></header>",
         f"<section><h2>{c['story']}</h2><p>{c['story_intro']}</p><ul>",
