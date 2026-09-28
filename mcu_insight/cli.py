@@ -162,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
                           help="size budget for the rendered evidence pack")
     diagnose.add_argument("--dry-run", action="store_true",
                           help="print the evidence pack and call nothing")
+    diagnose.add_argument("--lang", choices=("en", "zh"), default="en",
+                          help="language the pack asks the model to answer in")
     diagnose.add_argument("--out", help="write the model prompt (instructions + evidence) here")
     diagnose.add_argument("--json", action="store_true", help="emit the pack as JSON")
 
@@ -468,7 +470,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         return 2
 
     if args.out:
-        prompt = diagnose_mod.build_prompt(text)
+        prompt = diagnose_mod.build_prompt(text, args.lang)
         Path(args.out).write_text(prompt, encoding="utf-8")
         print(f"prompt written: {args.out} ({len(prompt):,} chars)")
         print(f"next: paste it into a model, save the answer, then run")

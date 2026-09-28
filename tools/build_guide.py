@@ -276,6 +276,24 @@ TEXT = {
         "step8_note": "The tool does not guess. It writes every known fact into a "
                       "numbered pack and stops. You paste that pack into any AI, then "
                       "check the answer back against it.",
+        "s8_lang_h": "To have it answer in Chinese, add one flag:",
+        "s8_lang_cmd": "python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt",
+        "s8_lang_d": "Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.",
+        "s8_what_h": "The diagnosis that comes back is always these four parts:",
+        "s8_what": [
+            "Root cause: the single most likely one, a confidence level, and the evidence ids behind it",
+            "Alternatives: what else could produce this, and which observation rules each one out",
+            "Fix: the smallest change that addresses the root cause",
+            "Verification: which command to run, which metric should move, and roughly how much",
+        ],
+        "s8_audit": "The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.",
+        "value_h": "So what is it worth",
+        "value": [
+            "<b>It sees what an AI cannot.</b> A model can read your code. It cannot read what is on your board: whether a stack has 512 bytes left or 256, whether the smallest free heap was 24 KB or 4 KB, whether inference P99 is 30 ms or 55 ms. Those exist only if something measures them.",
+            "<b>It does not let the AI make things up.</b> Every fact is numbered, the answer has to cite it, and the audit fails an answer that cites an id which does not exist. Without that layer, a diagnosis only sounds reasonable.",
+            "<b>It can say why this change made it worse.</b> With a baseline to compare against -- revision, capture length, and the slope of every metric -- it can tell a real regression from a capture that was simply shorter.",
+        ],
+        "value_close": "In one line: rules and statistics detect, an AI explains. The tool brings the evidence, the AI argues from it, and the citations between the two are checked by machine.",
         "diag_e": "1. the pack it writes (diagnose)",
         "diag_a": "2. what the AI says",
         "diag_u": "3. checked against the pack (audit)",
@@ -352,6 +370,24 @@ TEXT = {
         "step8": "第八步：出证据包，让 AI 来讲",
         "step8_note": "工具不猜。它把所有已知事实写成一份带编号的证据包就停手。"
                       "你把这份包粘给任何 AI，再把答案拿回来核对。",
+        "s8_lang_h": "想让它用中文回答，加一个参数：",
+        "s8_lang_cmd": "python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt",
+        "s8_lang_d": "证据编号 [E12] 和指标名保持工具里的原样，因为它们是标识符，翻译了就对不上；中文的是说明和回答。",
+        "s8_what_h": "它拿回来的诊断固定是这四段：",
+        "s8_what": [
+            "根因：最可能的那一个，给一个置信度，再列出支撑它的证据编号",
+            "其它可能：还有什么会造成同样现象，哪个观察能把它排除",
+            "修复：针对根因的最小改动",
+            "验证：跑哪条命令、哪个指标该动、大致动多少",
+        ],
+        "s8_audit": "最后一步是核对：答案里每个 [E12] 必须在证据包里真的存在；引用了不存在的编号，直接判失败。",
+        "value_h": "所以它到底值在哪",
+        "value": [
+            "<b>它看见 AI 看不见的东西。</b>模型能读你的代码，但读不到你板子上：栈剩 512 还是 256 字节、堆最少剩 24KB 还是 4KB、推理 P99 是 30ms 还是 55ms。这些只有量出来才有。",
+            "<b>它不让 AI 瞎编。</b>所有事实都带编号，答案必须引用；核对时出现不存在的编号就判失败。没有这一层，诊断只是听起来有道理。",
+            "<b>它能回答为什么这次变差了。</b>有基线做对照（版本、采集时长、每个指标的斜率），所以分得清是真的变差了，还是这次只是采得短。",
+        ],
+        "value_close": "一句话：检测靠规则和统计，解释靠 AI。工具负责拿到证据，AI 负责讲道理，而这两者之间的引用关系可以被机器核对。",
         "diag_e": "1. 它写出的证据包（diagnose）",
         "diag_a": "2. AI 给出的答案",
         "diag_u": "3. 拿回证据包里核对（audit）",
@@ -445,7 +481,13 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
               + f'<div><p class="note">{c["diag_a"]}</p>' + pre(facts["answer"]) + "</div>"
               + f'<div><p class="note">{c["diag_u"]}</p>' + pre(facts["audit"]) + "</div>"
               + "</div>"
-              + pre("python -m mcu_insight audit --pack prompt.txt --answer answer.md", "run")),
+              + f'<p class="note">{c["s8_lang_h"]}</p>'
+              + pre(c["s8_lang_cmd"], "run")
+              + f'<p class="note">{c["s8_lang_d"]}</p>'
+              + f'<p class="note">{c["s8_what_h"]}</p><ul>'
+              + "".join(f"<li>{line}</li>" for line in c["s8_what"]) + "</ul>"
+              + pre("python -m mcu_insight audit --pack prompt.txt --answer answer.md", "run")
+              + f'<p class="note">{c["s8_audit"]}</p>'),
     ])
 
     return "\n".join([
@@ -480,6 +522,9 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
         "</section>",
         f"<section><h2>{c['steps']}</h2><p>{c['b_intro']}</p>{route_b}</section>",
         f"<section><h2>{c['tail']}</h2>{tail}</section>",
+        f"<section><h2>{c['value_h']}</h2><ul>",
+        "".join(f"<li>{line}</li>" for line in c["value"]),
+        f"</ul><p class=\"note\">{c['value_close']}</p></section>",
         f"<section><h2>{c['result']}</h2><p class=\"note\">{c['result_d']}</p><ul>",
         "".join(f"<li>{c[f'result{i}']}</li>" for i in (1, 2, 3, 4, 5)),
         "</ul></section>",

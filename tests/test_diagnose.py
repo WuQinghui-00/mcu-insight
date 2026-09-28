@@ -335,6 +335,14 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         self.assertFalse(trimmed["truncated"])
         self.assertEqual(render_evidence(pack), text)
 
+    def test_the_prompt_can_ask_for_a_chinese_answer(self):
+        prompt = build_prompt("[E1] device board", lang="zh")
+        self.assertIn("用中文", prompt)
+        self.assertIn("[E12]", prompt)
+        self.assertIn("[E1] device board", prompt)
+
+    def test_the_prompt_defaults_to_english(self):
+        self.assertIn("Cite an evidence id", build_prompt("[E1] x"))
     def test_prompt_demands_cited_evidence(self):
         pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 10 ** 9, "stat": "min"}],
                              count=8)
@@ -376,6 +384,15 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
                          "--dry-run", "--note", "board is on hotspot Boo, 4 MB flash"])
         self.assertEqual(0, code)
         self.assertIn("board is on hotspot Boo", buffer.getvalue())
+    def test_lang_flag_writes_a_chinese_prompt(self):
+        config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
+        target = self.dir / "prompt-zh.txt"
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = main(["diagnose", "--db", str(self.database()), "--config", str(config),
+                         "--dry-run", "--lang", "zh", "--out", str(target)])
+        self.assertEqual(0, code)
+        self.assertIn("用中文", target.read_text(encoding="utf-8"))
     def test_out_writes_the_prompt(self):
         config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
         target = self.dir / "prompt.txt"

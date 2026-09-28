@@ -800,7 +800,7 @@ def render_audit(result: dict) -> str:
         lines.append("RESULT: the answer cites an evidence id that does not exist")
     return "\n".join(lines) + "\n"
 
-PROMPT = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
+PROMPT_EN = """You are diagnosing a resource problem in ESP-IDF / FreeRTOS firmware
 on an ESP32-class device.
 
 Answer from the evidence below and nothing else:
@@ -817,18 +817,43 @@ Answer from the evidence below and nothing else:
 Answer in this shape:
 
 - Root cause: the single most likely one, a confidence level, and the evidence
-  ids behind it.
+   ids behind it.
 - Alternatives: what else could produce this, and which observation would rule
-  each one out.
+   each one out.
 - Fix: the smallest change that addresses the root cause.
 - Verification: which command to run afterwards and which metric should move,
-  and by roughly how much.
+   and by roughly how much.
 
 EVIDENCE
 --------
 """
 
+PROMPT_ZH = """你在诊断一个 ESP-IDF / FreeRTOS 固件的资源问题，目标芯片是 ESP32 系列。
 
-def build_prompt(evidence_text: str) -> str:
-    """The instruction block plus the pack, ready to hand to a model."""
-    return PROMPT + evidence_text
+只根据下面的证据回答，不要用别的东西：
+
+1. 每条事实都要引用证据编号，例如 [E12]。没有编号的说法就是猜，而猜比不说更糟。
+2. 如果证据分不清两种可能，就直说，并指出哪一种测量能把它们分开。
+3. 不要编造指标名、数值、文件名或配置项；证据包里没有但你需要的，直接开口要。
+4. 检查只告诉你"越界了"，不告诉你"为什么"。为什么要从时序、构建数字和补丁里推。
+
+按这个格式回答，用中文：
+
+- 根因：最可能的那一个，给一个置信度，并列出支撑它的证据编号。
+- 其它可能：还有什么会造成同样现象，以及哪个观察能排除它。
+- 修复：针对根因的最小改动。
+- 验证：改完之后跑哪条命令、哪个指标应该动、大致动多少。
+
+证据
+----
+"""
+
+
+def build_prompt(evidence_text: str, lang: str = "en") -> str:
+    """The instruction block plus the pack, ready to hand to a model.
+
+    The pack stays English -- metric names and evidence ids are identifiers, and
+    translating them would break the audit -- while the instructions can be
+    written in the language you want the answer in.
+    """
+    return (PROMPT_ZH if lang == "zh" else PROMPT_EN) + evidence_text

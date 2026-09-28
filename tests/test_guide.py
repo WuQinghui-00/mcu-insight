@@ -113,6 +113,23 @@ class GuidePageTest(unittest.TestCase):
     def test_the_page_links_to_a_report_you_can_open(self):
         self.assertIn('href="report-demo.html"', render("en", FACTS))
 
+    def test_the_page_shows_what_a_diagnosis_contains(self):
+        page = render("en", FACTS)
+        for part in ("Root cause:", "Alternatives:", "Fix:", "Verification:"):
+            self.assertIn(part, page, part)
+        self.assertIn("--lang zh", page, "the page says how to ask for a Chinese answer")
+
+    def test_the_chinese_page_explains_the_answer_language(self):
+        page = render("zh", FACTS)
+        self.assertIn("根因", page)
+        self.assertIn("用中文回答", page)
+        self.assertIn("标识符", page)
+
+    def test_the_page_ends_with_what_the_tool_is_worth(self):
+        page = render("en", FACTS)
+        self.assertIn("So what is it worth", page)
+        self.assertIn("It sees what an AI cannot", page)
+        self.assertIn("does not let the AI make things up", page)
     def test_the_page_lists_what_the_reader_ends_up_with(self):
         page = render("en", FACTS)
         for artifact in ("report.html", "captures/board.db", "baseline.json",

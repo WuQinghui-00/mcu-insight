@@ -171,7 +171,10 @@ unknown id  : none
 unknown name: none
 uncited line: 0 (a warning, not an error)
 
-RESULT: OK</pre></div></div><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre></div></section>
+RESULT: OK</pre></div></div><p class="note">想让它用中文回答，加一个参数：</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">证据编号 [E12] 和指标名保持工具里的原样，因为它们是标识符，翻译了就对不上；中文的是说明和回答。</p><p class="note">它拿回来的诊断固定是这四段：</p><ul><li>根因：最可能的那一个，给一个置信度，再列出支撑它的证据编号</li><li>其它可能：还有什么会造成同样现象，哪个观察能把它排除</li><li>修复：针对根因的最小改动</li><li>验证：跑哪条命令、哪个指标该动、大致动多少</li></ul><pre class="run">python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">最后一步是核对：答案里每个 [E12] 必须在证据包里真的存在；引用了不存在的编号，直接判失败。</p></div></section>
+<section><h2>所以它到底值在哪</h2><ul>
+<li><b>它看见 AI 看不见的东西。</b>模型能读你的代码，但读不到你板子上：栈剩 512 还是 256 字节、堆最少剩 24KB 还是 4KB、推理 P99 是 30ms 还是 55ms。这些只有量出来才有。</li><li><b>它不让 AI 瞎编。</b>所有事实都带编号，答案必须引用；核对时出现不存在的编号就判失败。没有这一层，诊断只是听起来有道理。</li><li><b>它能回答为什么这次变差了。</b>有基线做对照（版本、采集时长、每个指标的斜率），所以分得清是真的变差了，还是这次只是采得短。</li>
+</ul><p class="note">一句话：检测靠规则和统计，解释靠 AI。工具负责拿到证据，AI 负责讲道理，而这两者之间的引用关系可以被机器核对。</p></section>
 <section><h2>最后你手上有什么</h2><p class="note">跑完整条流程，多出来的是这几样。全部在你自己电脑上，没有云端副本。</p><ul>
 <li><b>report.html</b> —— 给人看的：双击打开，一页看完固件占多少、哪里紧张。</li><li><b>captures/board.db</b> —— 你自己的数据：以后的分析都读它，不用再插板子。</li><li><b>budgets/…-baseline.json</b> —— 给下一次改动：自动对比，告诉你哪一项变差了。</li><li><b>prompt.txt 和 answer.md</b> —— 你和 AI 的一来一回：证据包，加它给出的诊断。</li><li><b>check 的退出码</b> —— 给 CI：0 通过、1 不通过，可以直接卡流水线。</li>
 </ul></section>
