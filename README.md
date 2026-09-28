@@ -354,6 +354,23 @@ matrix case says so on its first lines, because a drain that is a test case is
 not a regression, and a model that does not know the difference will name a
 call site that is doing exactly what it was told to do. `--note` carries
 anything the file name cannot.
+Every metric line carries its unit and how the number behaves:
+`heap.min (B, high-water mark, monotonic since boot)` next to
+`heap.free (B, instantaneous sample)`. That is not decoration. A high-water mark
+only ever gets worse, so a falling `heap.min` is the deepest point reached since
+boot rather than a trend, and reading it as one turns start-up into a leak. The
+suffix convention covers the usual cases, and the project file overrides
+anything the name cannot say:
+
+```json
+"metrics": {
+  "custom.sample_rate_hz": {
+    "unit": "Hz",
+    "kind": "build-time constant",
+    "description": "ADC rate fixed at build time; it does not follow the demo waveform frequency"
+  }
+}
+```
 Two rules keep it useful. The pack is trimmed to a size budget, dropping series
 for metrics nothing flagged, because evidence that cannot be read in one go is
 evidence that gets ignored. And a series that never moves collapses to one

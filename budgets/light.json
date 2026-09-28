@@ -1,4 +1,10 @@
 {
+  "metrics": {
+    "custom.light_sleep_pct": {
+      "unit": "%",
+      "description": "share of wall time the chip spent in light sleep; it collapses when a task polls instead of blocking"
+    }
+  },
   "rules": [
     {"metric": "heap.min", "min": 100000, "stat": "min"},
     {"metric": "task.*.stack_free_min", "min": 384, "stat": "min"},

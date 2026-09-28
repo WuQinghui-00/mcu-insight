@@ -7,6 +7,29 @@
     {"metric": "custom.infer_p99_us", "max": 5000, "stat": "max"},
     {"metric": "custom.model_accuracy_pct", "min": 85}
   ],
+  "metrics": {
+    "custom.sample_rate_hz": {
+      "unit": "Hz",
+      "kind": "build-time constant",
+      "description": "ADC sampling rate fixed at build time; it does not follow the demo waveform frequency"
+    },
+    "custom.model_accuracy_pct": {
+      "unit": "%",
+      "description": "rolling accuracy of the on-device classifier; it reads low right after a boot while the window refills"
+    },
+    "custom.infer_p50_us": {
+      "description": "inference latency, median of the recent window"
+    },
+    "custom.infer_p99_us": {
+      "description": "inference latency, 99th percentile of the recent window"
+    },
+    "custom.arena_used_bytes": {
+      "description": "tensor arena the interpreter actually uses"
+    },
+    "custom.uart_tx_retries": {
+      "description": "UART writes that needed a retry after the driver fix"
+    }
+  },
   "baseline": {
     "path": "signal_baseline.json",
     "max_change_pct": 20

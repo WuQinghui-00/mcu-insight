@@ -435,6 +435,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         pack = diagnose_mod.gather_evidence(
             store, report, database=str(db), device=args.device, config_path=args.config,
             note=args.note,
+            metric_meta=config.get("metrics"),
             build=build, partition=partition, project_dir=args.project,
             max_samples=args.max_samples,
         )

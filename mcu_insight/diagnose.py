@@ -120,6 +120,81 @@ def collect_changes(project_dir: str | Path, runner=subprocess.run) -> dict:
     }
 
 
+#: Units for the fields the telemetry schema defines, where the name alone is
+#: not enough to guess.
+KNOWN_UNITS = {
+    "uptime_ms": "ms",
+    "seq": "count",
+    "net.rssi": "dBm",
+    "net.disconnects": "count",
+    "net.reconnects": "count",
+    "net.mqtt_online": "flag",
+}
+
+#: Kinds that the naming convention gives away, checked in this order.
+KNOWN_KINDS = {
+    "uptime_ms": "clock since boot",
+    "seq": "clock since boot",
+    "net.disconnects": "counter since boot",
+    "net.reconnects": "counter since boot",
+    "net.mqtt_online": "flag",
+}
+
+
+def metric_unit(name: str) -> str | None:
+    """The unit implied by a metric name, or None when nothing implies one."""
+    lower = name.lower()
+    if lower in KNOWN_UNITS:
+        return KNOWN_UNITS[lower]
+    for suffix, unit in (("_us", "us"), ("_ms", "ms"), ("_hz", "Hz"), ("_pct", "%")):
+        if lower.endswith(suffix):
+            return unit
+    if lower.endswith("_bytes") or lower.endswith("stack_free") or lower.endswith("stack_total"):
+        return "B"
+    if lower.startswith("heap.") or lower.startswith("arena_") or "stack_free_min" in lower:
+        return "B"
+    if lower.endswith(("_samples", "_count", "_retries", "_total")):
+        return "count"
+    if lower.endswith(("_ratio", "_fraction")):
+        return "ratio"
+    return None
+
+
+def metric_kind(name: str) -> str:
+    """How the number behaves over time, which decides how it may be read."""
+    lower = name.lower()
+    if lower in KNOWN_KINDS:
+        return KNOWN_KINDS[lower]
+    if lower.endswith("stack_free_min") or lower.endswith("heap.min"):
+        # A high-water mark only ever gets worse. A fall is the deepest point
+        # reached since boot, never a recovery, and reading it as a trend line
+        # turns start-up into a "leak".
+        return "high-water mark, monotonic since boot"
+    if lower.endswith(".prio"):
+        return "configured priority"
+    if lower.endswith("stack_total"):
+        return "configured stack size"
+    if lower.endswith(("_samples", "_count", "_retries", "_total")):
+        return "counter since boot"
+    return "instantaneous sample"
+
+
+def metric_meaning(name: str, meta: dict | None = None) -> dict:
+    """Unit, kind and description: the project file wins over the convention."""
+    entry = (meta or {}).get(name) or {}
+    return {
+        "unit": entry.get("unit") or metric_unit(name),
+        "kind": entry.get("kind") or metric_kind(name),
+        "description": entry.get("description", ""),
+    }
+
+
+def metric_label(entry: dict) -> str:
+    """The bracketed annotation that rides along with a metric line."""
+    parts = [part for part in (entry.get("unit"), entry.get("kind")) if part]
+    return f" ({', '.join(parts)})" if parts else ""
+
+
 #: Databases written by tools/fault_matrix.py carry the injected fault in their
 #: name. Saying so changes the diagnosis completely: a drain that is a test
 #: case is not a regression, and a model that does not know the difference will
@@ -169,6 +244,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
                     build: ImageReport | None = None, partition: int | None = None,
                     project_dir: str | Path | None = None,
                     note: list[str] | None = None,
+                    metric_meta: dict | None = None,
                     max_samples: int = DEFAULT_MAX_SAMPLES) -> dict:
     """Collect everything that is known, and nothing that is invented."""
     devices = report.devices or store.devices()
@@ -193,6 +269,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
             "series_ms": series,
             "downsampled": downsampled,
             "constant": len({value for _, value in series}) <= 1,
+            **metric_meaning(name, metric_meta),
         })
 
     covered = {metric["name"] for metric in with_series}
@@ -206,6 +283,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
             "last": entry.last,
             "min": entry.minimum,
             "max": entry.maximum,
+            **metric_meaning(name, metric_meta),
         })
 
     config_file = Path(project_dir) / "sdkconfig" if project_dir else None
@@ -290,8 +368,12 @@ def render_evidence(pack: dict) -> str:
             f" {change['baseline']:,.0f} -> now {change['current']:,.0f}{percent}")
 
     for metric in pack["metrics"]:
-        add(f"metric {metric['name']}: last {metric['last']:,.0f}, min {metric['min']:,.0f},"
-            f" max {metric['max']:,.0f} over {metric['count']} samples")
+        line = (f"metric {metric['name']}{metric_label(metric)}: last {metric['last']:,.0f},"
+                f" min {metric['min']:,.0f}, max {metric['max']:,.0f}"
+                f" over {metric['count']} samples")
+        if metric.get("description"):
+            line += f"; {metric['description']}"
+        add(line)
         series = metric.get("series_ms") or []
         if metric.get("constant"):
             # A flat series costs the same as a moving one and says far less.
@@ -300,12 +382,13 @@ def render_evidence(pack: dict) -> str:
         elif series:
             facts = ", ".join(f"{point[0]:,.0f}ms={point[1]:,.0f}" for point in series)
             note = " (down-sampled)" if metric.get("downsampled") else ""
-            add(f"series {metric['name']}{note}: {facts}")
+            unit = f" [{metric['unit']}]" if metric.get("unit") else ""
+            add(f"series {metric['name']}{unit}{note}: {facts}")
         elif metric.get("dropped_series"):
             add(f"series {metric['name']}: dropped to fit the size budget")
     for other in pack["others"]:
-        add(f"metric {other['name']}: last {other['last']:,.0f}, min {other['min']:,.0f},"
-            f" max {other['max']:,.0f}")
+        add(f"metric {other['name']}{metric_label(other)}: last {other['last']:,.0f},"
+            f" min {other['min']:,.0f}, max {other['max']:,.0f}")
 
     build = pack["build"]
     if build:

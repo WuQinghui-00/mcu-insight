@@ -30,6 +30,10 @@ from mcu_insight.diagnose import (  # noqa: E402
     collect_changes,
     fit_pack,
     gather_evidence,
+    metric_kind,
+    metric_label,
+    metric_meaning as metric_meaning_for,
+    metric_unit,
     pack_evidence_ids,
     read_sdkconfig,
     render_evidence,
@@ -259,6 +263,58 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
         self.assertIn("Cite an evidence id", target.read_text(encoding="utf-8"))
 
 
+    def test_units_and_meaning_reach_the_rendered_lines(self):
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 10 ** 9, "stat": "min"}],
+                             count=8,
+                             metric_meta={"heap.min": {"description": "smallest free heap since boot"}})
+        text = render_evidence(pack)
+        self.assertIn("heap.min (B, high-water mark, monotonic since boot)", text)
+        self.assertIn("smallest free heap since boot", text)
+        self.assertIn("series heap.min [B]", text)
+
+
+class MetricMeaningTest(unittest.TestCase):
+    """A number without a unit is not evidence, it is arithmetic."""
+
+    def test_units_come_from_the_naming_convention(self):
+        for name, unit in (
+            ("heap.free", "B"),
+            ("heap.min", "B"),
+            ("task.wifi.stack_free_min", "B"),
+            ("custom.arena_used_bytes", "B"),
+            ("custom.infer_p99_us", "us"),
+            ("custom.loop_period_ms", "ms"),
+            ("custom.idle0_pct", "%"),
+            ("custom.sample_rate_hz", "Hz"),
+            ("custom.infer_samples", "count"),
+            ("net.rssi", "dBm"),
+        ):
+            with self.subTest(metric=name):
+                self.assertEqual(unit, metric_unit(name))
+
+    def test_a_name_that_implies_nothing_gets_no_unit(self):
+        # Guessing a unit is worse than admitting there is none.
+        self.assertIsNone(metric_unit("custom.model_class"))
+        self.assertIsNone(metric_unit("custom.model_expected"))
+
+    def test_high_water_marks_are_labelled_as_monotonic(self):
+        self.assertIn("high-water mark", metric_kind("heap.min"))
+        self.assertIn("high-water mark", metric_kind("task.main.stack_free_min"))
+        self.assertEqual("instantaneous sample", metric_kind("heap.free"))
+
+    def test_counters_and_configured_values_are_separated(self):
+        self.assertEqual("counter since boot", metric_kind("custom.infer_samples"))
+        self.assertEqual("clock since boot", metric_kind("uptime_ms"))
+        self.assertEqual("configured priority", metric_kind("task.wifi.prio"))
+        self.assertEqual("configured stack size", metric_kind("task.wifi.stack_total"))
+
+    def test_the_project_file_overrides_the_convention(self):
+        meta = {"custom.sample_rate_hz": {"kind": "build-time constant",
+                                          "description": "set at build time"}}
+        meaning = metric_meaning_for("custom.sample_rate_hz", meta)
+        self.assertEqual("build-time constant", meaning["kind"])
+        self.assertEqual("Hz", meaning["unit"])  # still inferred from the name
+        self.assertEqual("set at build time", meaning["description"])
 class AuditTest(TempWorkspace, unittest.TestCase):
     """The tool checks the answer, not the model."""
 
