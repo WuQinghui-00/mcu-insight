@@ -10,6 +10,11 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+# Only needed to read frames straight off a board; everything else runs on the
+# standard library alone.
+serial = ["pyserial>=3.5"]
+
 [project.scripts]
 mcu-insight = "mcu_insight.cli:main"
 

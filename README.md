@@ -16,15 +16,41 @@ fault injection evidence, and the offline half of the diagnosis layer: an
 evidence pack, the prompt, and the audit that checks an answer against it. `docs/diagnosis-case-study.md` walks the same
 capture through three generations of evidence pack. Calling a model is the remaining step.
 
-## Usage
+## Getting started
+
+The host side needs no dependencies, no account and no network. Starting from a
+new ESP-IDF project, [`docs/using-it.md`](docs/using-it.md) walks from
+installing the device agent to reading the HTML report.
 
 ```powershell
-python -m mcu_insight.cli analyze build/your_app.map `
-    --bin build/your_app.bin `
-    --partition 1500K
+python -m venv .venv
+.venv\Scripts\python -m pip install -e . --no-build-isolation   # optional: the `mcu-insight` command
+.venv\Scripts\python -m pip install pyserial                    # only to read a board directly
 ```
 
-`--json` emits machine-readable output for regression tracking.
+Every command also runs without installing, as `python -m mcu_insight <command>`
+from this directory:
+
+```powershell
+python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K
+```
+
+| command | question it answers | needs |
+|---|---|---|
+| `analyze` | what does this build cost | a `.map` |
+| `compare` | what grew between two builds | two `.map` files |
+| `model` | what does the TinyML model cost | a `.tflite` |
+| `collect` | store what the device reports | a board, or a saved log |
+| `summary` | what has this device been doing | a capture |
+| `check` | does it meet the budgets | a capture and a budget file |
+| `report` | one self-contained page with all of it | a capture |
+| `diagnose` | assemble the evidence that explains a failure | a capture |
+| `audit` | is an explanation actually backed by evidence | a pack and an answer |
+| `simulate` | develop the host side without hardware | nothing |
+
+`--json` emits machine-readable output for regression tracking. `check` exits
+non-zero on a violation and also when a rule could not be judged, so CI can gate
+on it.
 
 ## How it works
 

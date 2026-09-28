@@ -30,9 +30,9 @@ mcu_telemetry_config_t telemetry = {
 ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
 /* after creating a task */
-mcu_telemetry_register_task("sensor", sensor_task_handle, TASK_STACK_SENSOR);
+mcu_telemetry_register_task("sensor", TASK_STACK_SENSOR);
 
-/* project specific metric */
+/* a project metric; the name becomes custom.<key> on the host */
 mcu_telemetry_set_custom_int("loop_period_ms", 200);
 ```
 

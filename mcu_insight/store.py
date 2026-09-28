@@ -181,10 +181,15 @@ class Store:
         ).fetchall()
         return [float(uptime) for (uptime,) in rows]
 
-    def series(self, device: str, metric: str) -> list[tuple[float, float]]:
-        rows = self._conn.execute(
+    def series(self, device: str, metric: str,
+               since_id: int | None = None) -> list[tuple[float, float]]:
+        query = (
             "SELECT f.uptime_ms, s.value FROM samples s JOIN frames f ON f.id = s.frame_id"
-            " WHERE f.device = ? AND s.metric = ? ORDER BY f.id",
-            (device, metric),
+            " WHERE f.device = ? AND s.metric = ?"
         )
+        params: list = [device, metric]
+        if since_id is not None:
+            query += " AND f.id >= ?"
+            params.append(since_id)
+        rows = self._conn.execute(query + " ORDER BY f.id", params)
         return [(float(uptime), float(value)) for uptime, value in rows]

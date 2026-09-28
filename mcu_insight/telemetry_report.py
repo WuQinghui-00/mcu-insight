@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from .store import MetricStats, Store
+from .store import Store
+from .trends import steady_samples
 
 
 def format_number(value: float) -> str:
@@ -53,20 +54,33 @@ def render_summary(store: Store, device: str | None = None, top: int = 12) -> st
         )
 
     stats = store.metric_stats(target, since_id=since)
-    ranked: list[MetricStats] = sorted(
-        stats.values(), key=lambda s: (-abs(s.change), s.metric)
-    )
+    # Read the trend the way the report does. A boot is not steady state, and a
+    # high-water mark is still at its post-boot peak in the first frames, so
+    # comparing the first sample with the last reports a leak that is really
+    # the first second of the run.
+    trends = []
+    for name in stats:
+        points = store.series(target, name, since_id=since)
+        _, steady = steady_samples(points)
+        trends.append((name, steady[0][1], steady[-1][1], steady[-1][1] - steady[0][1],
+                       len(steady), len(points)))
+    trends.sort(key=lambda item: (-abs(item[3]), item[0]))
     frames_in_session = store.frame_count(target, since_id=since)
 
     lines.append("")
     lines.append(f"Metric trends ({target}, {frames_in_session} frames)")
-    for entry in ranked[:top]:
+    for name, first, last, delta, steady_count, total in trends[:top]:
         lines.append(
-            f"  {entry.metric:<34} {format_number(entry.first):>10} -> "
-            f"{format_number(entry.last):>10}   change {entry.change:+,.0f}"
+            f"  {name:<34} {format_number(first):>10} -> "
+            f"{format_number(last):>10}   change {delta:+,.0f}"
+        )
+    if trends and trends[0][4] < trends[0][5]:
+        lines.append(
+            "  note: the first samples after a boot are start-up, not steady state;"
+            " they are left out of these numbers"
         )
 
-    stable = [s for s in ranked[top:] if abs(s.change) < 1e-9]
+    stable = [t for t in trends[top:] if abs(t[3]) < 1e-9]
     if stable:
         lines.append("")
         lines.append(f"{len(stable)} further metric(s) unchanged over the capture.")
