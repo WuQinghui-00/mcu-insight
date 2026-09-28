@@ -66,11 +66,12 @@ class TempWorkspace:
         path.write_text(json.dumps({"rules": rules}), encoding="utf-8")
         return path
 
-    def pack_for(self, scenario: str, rules, count: int = 10, **kwargs) -> dict:
+    def pack_for(self, scenario: str, rules, count: int = 10,
+                 database: str = "captures/demo.db", **kwargs) -> dict:
         store = self.store_for(scenario, count=count)
         config = self.config(rules)
         report = check_store(store, load_config(config))
-        return gather_evidence(store, report, database="captures/demo.db",
+        return gather_evidence(store, report, database=database,
                                config_path=config, **kwargs)
 
 class EvidenceTest(TempWorkspace, unittest.TestCase):
@@ -90,6 +91,22 @@ class EvidenceTest(TempWorkspace, unittest.TestCase):
         pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1000, "stat": "min"}], count=8)
         self.assertIn("VIOLATION none", render_evidence(pack))
 
+    def test_a_fault_capture_declares_what_it_is(self):
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 10 ** 9, "stat": "min"}],
+                             count=8, database="captures/fault-heap.db")
+        text = render_evidence(pack)
+        self.assertIn("provenance", text)
+        self.assertIn("heap leak is injected on purpose", text)
+        self.assertIn("deliberate test behaviour", text)
+
+    def test_an_ordinary_capture_claims_no_provenance(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6)
+        self.assertEqual([], pack["provenance"])
+
+    def test_a_free_text_note_is_carried_into_the_pack(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             note=["captured after the 100 Hz change, board on 4 MB flash"])
+        self.assertIn("100 Hz change", render_evidence(pack))
     def test_capture_shape_is_recorded(self):
         pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1000, "stat": "min"}], count=8)
         self.assertEqual(8, pack["capture"]["frames"])
@@ -223,6 +240,14 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn("does not call a model", stderr.getvalue())
 
+    def test_note_flag_reaches_the_pack(self):
+        config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
+        buffer = io.StringIO()
+        with contextlib.redirect_stdout(buffer):
+            code = main(["diagnose", "--db", str(self.database()), "--config", str(config),
+                         "--dry-run", "--note", "board is on hotspot Boo, 4 MB flash"])
+        self.assertEqual(0, code)
+        self.assertIn("board is on hotspot Boo", buffer.getvalue())
     def test_out_writes_the_prompt(self):
         config = self.config([{"metric": "heap.min", "min": 135000, "stat": "min"}])
         target = self.dir / "prompt.txt"
@@ -254,6 +279,19 @@ class AuditTest(TempWorkspace, unittest.TestCase):
         self.assertEqual(["custom.heap_fragmentation_index"], result["unknown_metrics"])
         self.assertFalse(result["ok"])
 
+    def test_paths_are_not_mistaken_for_metrics(self):
+        # Real false positives from a real answer: a capture file and a build
+        # artefact whose names end in a metric family the pack knows.
+        answer = ("- Re-run the capture that produced captures\\fault-heap.db and compare\n"
+                  "  build/heap.map and notes/heap.md against it [E2].\n")
+        result = audit_answer(answer, self.pack_text())
+        self.assertEqual([], result["unknown_metrics"])
+        self.assertTrue(result["ok"])
+
+    def test_a_genuine_invented_name_is_still_caught_next_to_a_path(self):
+        answer = "- Compare captures\\fault-heap.db [E2] with custom.heap_index [E2].\n"
+        result = audit_answer(answer, self.pack_text())
+        self.assertEqual(["custom.heap_index"], result["unknown_metrics"])
     def test_source_file_names_are_not_mistaken_for_metrics(self):
         result = audit_answer("The allocation is in main.c and dac_wave.c [E2].", self.pack_text())
         self.assertEqual([], result["unknown_metrics"])

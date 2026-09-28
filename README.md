@@ -349,6 +349,11 @@ numbers, the sdkconfig keys that can move a resource figure, and the git state
 of the tree that produced the firmware. Every line is numbered `[E12]` so an
 answer can be checked rather than trusted.
 
+The pack opens with what the capture *is*. A database named after a fault
+matrix case says so on its first lines, because a drain that is a test case is
+not a regression, and a model that does not know the difference will name a
+call site that is doing exactly what it was told to do. `--note` carries
+anything the file name cannot.
 Two rules keep it useful. The pack is trimmed to a size budget, dropping series
 for metrics nothing flagged, because evidence that cannot be read in one go is
 evidence that gets ignored. And a series that never moves collapses to one

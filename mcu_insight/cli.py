@@ -148,6 +148,8 @@ def build_parser() -> argparse.ArgumentParser:
     diagnose.add_argument("--partition", help="app partition size, e.g. 1500K")
     diagnose.add_argument("--project", help="firmware project directory: sdkconfig and git state")
     diagnose.add_argument("--device", help="device to report on (default: the busiest)")
+    diagnose.add_argument("--note", action="append",
+                          help="how the capture was produced; repeatable")
     diagnose.add_argument("--max-samples", type=int, default=diagnose_mod.DEFAULT_MAX_SAMPLES,
                           help="samples kept per metric series")
     diagnose.add_argument("--max-bytes", type=int, default=diagnose_mod.DEFAULT_MAX_BYTES,
@@ -432,6 +434,7 @@ def cmd_diagnose(args: argparse.Namespace) -> int:
         report = checks_mod.check_store(store, config, baseline, baseline_path)
         pack = diagnose_mod.gather_evidence(
             store, report, database=str(db), device=args.device, config_path=args.config,
+            note=args.note,
             build=build, partition=partition, project_dir=args.project,
             max_samples=args.max_samples,
         )

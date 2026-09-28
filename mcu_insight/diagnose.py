@@ -120,6 +120,34 @@ def collect_changes(project_dir: str | Path, runner=subprocess.run) -> dict:
     }
 
 
+#: Databases written by tools/fault_matrix.py carry the injected fault in their
+#: name. Saying so changes the diagnosis completely: a drain that is a test
+#: case is not a regression, and a model that does not know the difference will
+#: name a call site that is doing exactly what it was told to do.
+FAULT_CAPTURES = {
+    "fault-off.db": "FAULT off, the baseline case, nothing injected",
+    "fault-heap.db": "FAULT heap, a heap leak is injected on purpose",
+    "fault-stack.db": "FAULT stack, an oversized stack frame is injected on purpose",
+    "fault-busy.db": "FAULT busy, a high priority busy loop is injected on purpose",
+}
+
+
+def capture_provenance(database: str, notes: list[str] | None = None) -> list[str]:
+    """What the capture is, decided before its numbers are read as a regression."""
+    provenance = []
+    name = Path(database).name.lower() if database else ""
+    if name in FAULT_CAPTURES:
+        provenance.append(
+            f"{FAULT_CAPTURES[name]}. The file name says so, so unless it was renamed,"
+            " what follows is deliberate test behaviour, not a regression in the"
+            " application code."
+        )
+    for note in notes or ():
+        if note:
+            provenance.append(note)
+    return provenance
+
+
 def _build_summary(build: ImageReport | None, partition: int | None) -> dict | None:
     if build is None:
         return None
@@ -140,6 +168,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
                     device: str | None = None, config_path: str | Path | None = None,
                     build: ImageReport | None = None, partition: int | None = None,
                     project_dir: str | Path | None = None,
+                    note: list[str] | None = None,
                     max_samples: int = DEFAULT_MAX_SAMPLES) -> dict:
     """Collect everything that is known, and nothing that is invented."""
     devices = report.devices or store.devices()
@@ -186,6 +215,7 @@ def gather_evidence(store: Store, report: CheckReport, *, database: str = "",
         "device": target,
         "firmware": store.latest_firmware(target) if target else "",
         "budget": str(config_path) if config_path else "",
+        "provenance": capture_provenance(database, note),
         "capture": {
             "database": database,
             "frames": store.frame_count(target) if target else 0,
@@ -241,6 +271,8 @@ def render_evidence(pack: dict) -> str:
     add(f"device {pack['device']} (firmware {pack['firmware'] or 'unknown'})")
     add(f"capture {capture['frames']} frames over {capture['boot_sessions']} boot session(s)"
         f" from {capture['database'] or 'an unnamed database'}")
+    for item in pack.get("provenance", []):
+        add(f"provenance {item}")
     if pack.get("budget"):
         add(f"budget file {pack['budget']}")
 
@@ -340,8 +372,20 @@ def fit_pack(pack: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> tuple[dict, str]
 #: A citation as the prompt asks for it, or the model simply uses: [E12].
 CITATION = re.compile(r"\[E(\d+)\]")
 
-#: Dotted lowercase tokens such as heap.min or task.wifi.stack_free_min.
-DOTTED = re.compile(r"\b[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+\b")
+#: Dotted lowercase tokens such as heap.min or task.wifi.stack_free_min. The
+#: lookbehind keeps `fault-heap.db` from being read as the metric `heap.db`,
+#: because the hyphen, slash and dot say this token is part of a path.
+DOTTED = re.compile(r"(?<![\w.\-/\\])[a-z][a-z0-9_]*(?:\.[a-z0-9_]+)+")
+
+#: File suffixes that are never metric names, however metric-like they look.
+FILE_SUFFIXES = frozenset(("c", "h", "cpp", "hpp", "py", "db", "txt", "md", "json",
+                           "bin", "map", "elf", "html", "yaml", "yml", "log", "csv",
+                           "cmake", "ini", "cfg"))
+
+
+def looks_like_a_file(token: str) -> bool:
+    """True when a dotted token ends in a source or artefact suffix."""
+    return token.rsplit(".", 1)[-1] in FILE_SUFFIXES
 
 
 def pack_evidence_ids(evidence_text: str) -> set[str]:
@@ -414,7 +458,10 @@ def audit_answer(answer: str, evidence_text: str) -> dict:
     cited = [f"E{int(match)}" for match in CITATION.findall(answer)]
     unknown_ids = sorted({citation for citation in cited if citation not in known_ids})
 
-    mentioned = {token for token in DOTTED.findall(answer) if token.split(".")[0] in families}
+    mentioned = {
+        token for token in DOTTED.findall(answer)
+        if token.split(".")[0] in families and not looks_like_a_file(token)
+    }
     unknown_metrics = sorted(
         token for token in mentioned if token not in known_names and token not in families
     )
