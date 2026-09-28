@@ -10,8 +10,10 @@ The tool answers questions a code review cannot answer:
 
 ## Status
 
-Stage 1 of the project: build-time (static) resource accounting.
-Runtime telemetry and TinyML model analysis are planned next.
+Stages 1 to 4 are in place: build-time resource accounting, TinyML model
+analysis, runtime telemetry from the device, and threshold/baseline checks with
+fault injection evidence. Next is the diagnosis layer: assemble the evidence
+pack first, then optionally hand it to a model.
 
 ## Usage
 
@@ -277,6 +279,43 @@ A caution from the same session: adding 26 KB of diagnostic code (the harmonic
 dump and a floating-point feature dump) moved the measured P50 from 7.5 ms to
 18.8 ms on an identical model. Latency is layout sensitive on this chip, so only
 compare builds that differ in the thing under test.
+
+A later measurement changed the latency number in that table. The 7.3 ms P50 was
+not the model. The software DAC pushed one table sample per `esp_timer` callback,
+about 20 000 interrupts per second, and that stole CPU from the inference task.
+Moving the DAC to continuous mode on the DMA engine removed the interference: the
+same model then measures **P50 1.0 ms / P99 1.25 ms**. The same change fixed the
+output frequency, which had been 78 Hz for a requested 200 Hz and now tracks the
+request (203 Hz measured). Two lessons: a resource metric can be dominated by a
+neighbour rather than by the code under test, and an instrument that sits on the
+critical path will lie.
+
+## HTML report
+
+`report` turns one capture into a single self-contained page: checks, baseline
+changes, metric trends, build resources and the fault injection matrix. The data
+is inlined and the charts are hand-written SVG, so the file opens from disk with
+no server and no CDN, and it can be committed or published as-is.
+
+```powershell
+python -m mcu_insight report `
+    --db captures/fault-off.db `
+    --config budgets/signal.json `
+    --map build/signal_processing_system.map `
+    --bin build/signal_processing_system.bin `
+    --partition 1500K `
+    --faults captures `
+    --out docs/report-demo.html
+```
+
+A change is only coloured when the worrying direction is known: free heap, stack
+headroom, idle share and accuracy falling, latency, jitter and drift rising.
+Metrics whose direction depends on context (uptime, sample counts, the classified
+label) are listed without a verdict rather than guessed at. The fault captures are
+re-checked against `fault_matrix.json` instead of the application budget, because
+the accuracy rule reads low during the first seconds after a boot and would
+otherwise flag the clean baseline as a regression.
+
 ## Fault injection matrix
 
 `tools/fault_matrix.py` injects one fault at a time through the firmware switch

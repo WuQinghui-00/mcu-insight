@@ -29,6 +29,51 @@ TREND_HINTS = (
     "arena_used",
 )
 
+#: Which direction of change is the worrying one, matched on metric-name
+#: substrings. A regression is not the same thing as a decrease: free heap
+#: falling is bad, inference latency falling is good, and uptime is neither.
+#: Anything unmatched is reported as "changed" with no verdict rather than
+#: being guessed at, because a wrong red badge is worse than a neutral one.
+_REGRESSION_DIRECTION = (
+    ("stack_free", "down"),  # less stack left = closer to an overflow
+    ("heap.min", "down"),  # less heap left = closer to a failed allocation
+    ("heap.free", "down"),
+    ("arena_free", "down"),
+    ("arena_used", "up"),
+    ("headroom", "down"),
+    ("idle", "down"),  # idle share falling = more CPU stolen by something else
+    ("sleep", "down"),
+    ("accuracy", "down"),
+    ("acc_", "down"),  # per-class accuracy, e.g. acc_triangle_pct
+    ("confidence", "down"),
+    ("infer_p", "up"),  # a rising latency percentile = slower inference
+    ("infer_min", "up"),
+    ("infer_mean", "up"),
+    ("infer_max", "up"),
+    ("latency", "up"),
+    ("jitter", "up"),
+    ("drift", "up"),
+    ("reset_count", "up"),
+)
+
+
+def regression_direction(metric: str) -> str | None:
+    """Return "up"/"down" when a rise/fall in *metric* is the bad direction."""
+    name = metric.lower()
+    for hint, bad_way in _REGRESSION_DIRECTION:
+        if hint in name:
+            return bad_way
+    return None
+
+
+def change_verdict(metric: str, delta: float) -> str:
+    """Classify a delta as "bad", "ok", or "" when the direction is unknown."""
+    bad_way = regression_direction(metric)
+    if bad_way is None or delta == 0:
+        return ""
+    worse_off = delta > 0 if bad_way == "up" else delta < 0
+    return "bad" if worse_off else "ok"
+
 STYLE = """
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
@@ -100,7 +145,7 @@ def _trend_cards(store: Store, device: str, metrics: list[str], top: int) -> str
         values = [v for _, v in points]
         first, last = values[0], values[-1]
         delta = last - first
-        colour = "#b42318" if delta < 0 and "min" in metric else "#3b82f6"
+        colour = "#b42318" if change_verdict(metric, delta) == "bad" else "#3b82f6"
         cards.append(
             '<div class="card">'
             f'<h3>{_esc(metric)}</h3>'
@@ -148,14 +193,17 @@ def _changes_block(report: CheckReport) -> str:
             "<th class=num>Change</th></tr>"]
     for change in report.changes:
         amount = f"{change.percent:+.1%}" if change.percent is not None else f"{change.delta:+,.0f}"
-        cls = "bad" if (change.delta < 0) else "ok"
+        cls = change_verdict(change.metric, change.delta)
+        cell_class = ("num " + cls).strip()
         rows.append(
             f'<tr><td class="name">{_esc(change.metric)}</td>'
             f'<td class="num">{change.baseline:,.0f}</td>'
             f'<td class="num">{change.current:,.0f}</td>'
-            f'<td class="num {cls}">{amount}</td></tr>'
+            f'<td class="{cell_class}">{amount}</td></tr>'
         )
     rows.append("</table>")
+    rows.append("<p class=note>Coloured values moved in the worrying direction; "
+                "uncoloured values changed without a known better-or-worse direction.</p>")
     return "".join(rows)
 
 
