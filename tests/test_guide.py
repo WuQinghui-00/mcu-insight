@@ -45,7 +45,7 @@ class GuidePageTest(unittest.TestCase):
     def test_there_are_two_routes_and_they_are_labelled(self):
         page = render("en", FACTS)
         self.assertIn("A. Change nothing", page)
-        self.assertIn("B. Add five things", page)
+        self.assertIn("B. Add three lines", page)
         self.assertIn("You touch three places", page)
 
     def test_the_page_needs_no_javascript_and_no_network(self):
@@ -82,16 +82,33 @@ class GuidePageTest(unittest.TestCase):
         self.assertIn("run inside mcu-insight", page)
         self.assertIn("run inside My-Project", page)
 
-    def test_the_five_placements_in_main_c_are_marked(self):
+    def test_the_three_lines_are_marked_with_where_they_go(self):
         page = render("en", FACTS)
-        for marker in ("1. at the top", "2. outside app_main", "3. after the hardware is up",
-                       "4. right after each task", "5. wherever a number"):
+        for marker in ("1. at the very top", "2. outside app_main",
+                       "3. after the hardware is up"):
             self.assertIn(marker, page)
 
-    def test_the_chinese_page_marks_the_placements_in_chinese(self):
+    def test_the_chinese_page_marks_the_lines_in_chinese(self):
         page = render("zh", FACTS)
-        self.assertIn("第 1 处", page)
-        self.assertIn("第 5 处", page)
+        self.assertIn("第 1 行", page)
+        self.assertIn("第 3 行", page)
+        self.assertIn("业务代码一个字都不用改", page)
+
+    def test_the_page_says_what_is_reported_without_any_code(self):
+        # The point of the minimal snippet: the reader does not have to decide
+        # what to watch, because heap, stacks, idle and sleep come for free.
+        page = render("en", FACTS)
+        self.assertIn("how much stack every task has left", page)
+        self.assertIn("CONFIG_FREERTOS_USE_TRACE_FACILITY=y", page)
+        self.assertIn("CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y", page)
+        self.assertIn("CONFIG_PM_ENABLE=y", page)
+        self.assertIn("you do not have to decide what to watch", page)
+
+    def test_the_optional_extras_are_marked_optional(self):
+        page = render("en", FACTS)
+        self.assertIn("mcu_telemetry_register_task", page)
+        self.assertIn("mcu_telemetry_histogram_add", page)
+        self.assertIn("optional:", page)
 
     def test_the_page_links_to_a_report_you_can_open(self):
         self.assertIn('href="report-demo.html"', render("en", FACTS))

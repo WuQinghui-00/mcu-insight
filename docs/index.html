@@ -49,7 +49,7 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <li>copy one small component into your ESP-IDF project, so the firmware reports its own state every few seconds</li><li>run one command and get an <b>HTML report a human can read</b>: how much flash and RAM the build takes, how much stack each task has left, the smallest free heap, how slow inference gets</li><li>when something is wrong, get an <b>evidence pack</b>: every known fact, numbered, ready to paste into any AI</li><li>check the AI's answer back against that pack, which catches a citation that does not exist</li>
 </ul><p class="note">No network, no account, no instruments.</p></section>
 <section><h2>You touch three places, and nothing else</h2><ul>
-<li>My-Project/main/main.c - five additions, each one shown below</li><li>My-Project/main/CMakeLists.txt - one name added to REQUIRES</li><li>mcu-insight/budgets/my-board.json - a new file with your limits in it</li>
+<li>My-Project/main/main.c - three lines, each one shown below</li><li>My-Project/main/CMakeLists.txt - one name added to REQUIRES</li><li>mcu-insight/budgets/my-board.json - a new file with your limits in it</li>
 </ul></section>
 <section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
 <div class=step><div class="where">run inside mcu-insight\</div><h3>What the build costs</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
@@ -73,7 +73,7 @@ Memory
   weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
 ...</pre></div>
 </section>
-<section><h2>B. Add five things, and see what the board is really doing</h2><div class=step><div class="num">1</div><div class="where">run inside mcu-insight\</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">My-Project\
+<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run inside mcu-insight\</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">My-Project\
   CMakeLists.txt
   main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">My-Project\
   CMakeLists.txt
@@ -82,13 +82,12 @@ Memory
       CMakeLists.txt
       include/mcu_telemetry.h
       mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run inside My-Project\</div><h3>Add the five things to main.c</h3><p class="note">Each one is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the top, with the other includes */
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run inside My-Project\</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
 #include &quot;mcu_telemetry.h&quot;
 
 /* 2. outside app_main, anywhere in the file */
 static const mcu_telemetry_config_t telemetry = {
-    .device = &quot;my-board&quot;,      /* a name for this board, used to group series */
-    .firmware = FW_REVISION,   /* optional: short git hash */
+    .device = &quot;my-board&quot;,      /* a name for this board */
     .report_period_ms = 5000,  /* report every 5 seconds */
 };
 
@@ -99,14 +98,18 @@ void app_main(void)
     /* 3. after the hardware is up */
     ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
 
-    /* 4. right after each task you create, with the same name */
-    xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
-    mcu_telemetry_register_task(&quot;control&quot;, 4096);
+    /* the rest of your code does not change */
+}</pre><p class="note">Those three lines are enough. The agent already reports all of this, with no code from you:</p><ul><li>heap: how much is free now, the smallest it has been, the largest allocatable block</li><li>how much stack every task has left (with the first switch below, httpd, mqtt and wifi appear without being registered)</li><li>idle share per CPU core (second switch)</li><li>share of time spent in light sleep (third switch)</li><li>UART retries, counted by the agent, which is how lost bytes show up</li></ul><p class="note">Those three switches are menuconfig settings, not code:</p><pre class="run">CONFIG_FREERTOS_USE_TRACE_FACILITY=y       discover every task automatically
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y idle share per core
+CONFIG_PM_ENABLE=y                        light sleep share</pre><p class="note">Want more detail? Add these when you want them (optional):</p><pre class="run">/* optional: how much of a task&#x27;s stack is used. Same name as xTaskCreate. */
+xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
+mcu_telemetry_register_task(&quot;control&quot;, 4096);
 
-    /* 5. wherever a number you care about is computed */
-    mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
-    mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);  /* gives p50, p99, min, max */
-}</pre></div><div class=step><div class="num">3</div><div class="where">run inside My-Project\</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
+/* optional: a number of your own, next to where it is computed */
+mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
+
+/* optional: a latency distribution for any call, one line at the call site */
+mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run inside My-Project\</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS &quot;main.c&quot;
     INCLUDE_DIRS &quot;.&quot;

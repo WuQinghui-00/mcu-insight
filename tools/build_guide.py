@@ -57,13 +57,12 @@ td:first-child { white-space: nowrap; color: #6b7280; }
 footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 """
 
-C_EN = """/* 1. at the top, with the other includes */
+C_MIN_EN = """/* 1. at the very top, with the other includes */
 #include "mcu_telemetry.h"
 
 /* 2. outside app_main, anywhere in the file */
 static const mcu_telemetry_config_t telemetry = {
-    .device = "my-board",      /* a name for this board, used to group series */
-    .firmware = FW_REVISION,   /* optional: short git hash */
+    .device = "my-board",      /* a name for this board */
     .report_period_ms = 5000,  /* report every 5 seconds */
 };
 
@@ -74,22 +73,15 @@ void app_main(void)
     /* 3. after the hardware is up */
     ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
-    /* 4. right after each task you create, with the same name */
-    xTaskCreate(control_task, "control", 4096, NULL, 2, NULL);
-    mcu_telemetry_register_task("control", 4096);
-
-    /* 5. wherever a number you care about is computed */
-    mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
-    mcu_telemetry_histogram_add("infer", latency_us);  /* gives p50, p99, min, max */
+    /* the rest of your code does not change */
 }"""
 
-C_ZH = """/* 第 1 处：文件最上面，和其他 #include 放一起 */
+C_MIN_ZH = """/* 第 1 行：文件最上面，和其他 #include 放一起 */
 #include "mcu_telemetry.h"
 
-/* 第 2 处：app_main 外面，文件里任意位置 */
+/* 第 2 行：app_main 外面，文件里任意位置 */
 static const mcu_telemetry_config_t telemetry = {
-    .device = "my-board",      /* 给板子起个名字，报告里用它区分设备 */
-    .firmware = FW_REVISION,   /* 可选：git 短哈希，方便对版本 */
+    .device = "my-board",      /* 给板子起个名字 */
     .report_period_ms = 5000,  /* 每 5 秒上报一次 */
 };
 
@@ -97,18 +89,31 @@ void app_main(void)
 {
     /* ... 你原本的初始化 ... */
 
-    /* 第 3 处：硬件起来之后，加这一行 */
+    /* 第 3 行：硬件起来之后 */
     ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
-    /* 第 4 处：每建一个任务，紧跟一行注册，名字要和 xTaskCreate 里一致 */
-    xTaskCreate(control_task, "control", 4096, NULL, 2, NULL);
-    mcu_telemetry_register_task("control", 4096);
-
-    /* 第 5 处：想盯的数值，就在它算出来的那一行下面加 */
-    mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
-    mcu_telemetry_histogram_add("infer", latency_us);  /* 自动出 p50 / p99 / min / max */
+    /* 下面还是你原来的业务代码，一行都不用改 */
 }"""
 
+C_OPT_EN = """/* optional: how much of a task's stack is used. Same name as xTaskCreate. */
+xTaskCreate(control_task, "control", 4096, NULL, 2, NULL);
+mcu_telemetry_register_task("control", 4096);
+
+/* optional: a number of your own, next to where it is computed */
+mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
+
+/* optional: a latency distribution for any call, one line at the call site */
+mcu_telemetry_histogram_add("infer", latency_us);"""
+
+C_OPT_ZH = """/* 可选：想知道某个任务的栈用了百分之多少，任务建好之后加一行 */
+xTaskCreate(control_task, "control", 4096, NULL, 2, NULL);
+mcu_telemetry_register_task("control", 4096);   /* 名字要和 xTaskCreate 里一致 */
+
+/* 可选：你自己的数值，在它算出来的那一行下面加 */
+mcu_telemetry_set_custom_int("loop_jitter_us", jitter);
+
+/* 可选：任何函数的耗时分布，在调用处加一行，自动出 p50 / p99 / 最大 / 最小 */
+mcu_telemetry_histogram_add("infer", latency_us);"""
 CMAKE_SNIPPET = """# My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS "main.c"
@@ -217,10 +222,10 @@ TEXT = {
         "story_outro": "No network, no account, no instruments.",
         "tail": "Once there is data: judge it, and get the report",
         "change": "You touch three places, and nothing else",
-        "change1": "My-Project/main/main.c - five additions, each one shown below",
+        "change1": "My-Project/main/main.c - three lines, each one shown below",
         "change2": "My-Project/main/CMakeLists.txt - one name added to REQUIRES",
         "change3": "mcu-insight/budgets/my-board.json - a new file with your limits in it",
-        "steps": "B. Add five things, and see what the board is really doing",
+        "steps": "B. Add three lines, and see what the board is really doing",
         "here_tool": "run inside mcu-insight\\",
         "here_fw": "run inside My-Project\\",
         "back": "what comes back",
@@ -233,9 +238,20 @@ TEXT = {
         "step1_note2": "Nothing is created by hand: if components\\ or mcu_telemetry\\ do "
                        "not exist, the command makes them. The argument must be the "
                        "project root, the directory that holds CMakeLists.txt.",
-        "step2": "Add the five things to main.c",
-        "step2_note": "Each one is marked with where it goes. Nothing else in the file "
-                      "changes.",
+        "step2": "Change main.c: three lines",
+        "b_intro": "One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.",
+        "s2_auto_h": "Those three lines are enough. The agent already reports all of this, with no code from you:",
+        "s2_auto": [
+            "heap: how much is free now, the smallest it has been, the largest allocatable block",
+            "how much stack every task has left (with the first switch below, httpd, mqtt and wifi appear without being registered)",
+            "idle share per CPU core (second switch)",
+            "share of time spent in light sleep (third switch)",
+            "UART retries, counted by the agent, which is how lost bytes show up",
+        ],
+        "s2_cfg_h": "Those three switches are menuconfig settings, not code:",
+        "s2_cfg": "CONFIG_FREERTOS_USE_TRACE_FACILITY=y       discover every task automatically\nCONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y idle share per core\nCONFIG_PM_ENABLE=y                        light sleep share",
+        "s2_opt_h": "Want more detail? Add these when you want them (optional):",
+        "step2_note": "Each line is marked with where it goes. Nothing else in the file changes.",
         "step3": "Add one name to main/CMakeLists.txt",
         "step3_note": "Without this line the header will not resolve and the build stops.",
         "step4": "Build and flash",
@@ -282,10 +298,10 @@ TEXT = {
         "story_outro": "不用联网、不用注册、不用仪器。",
         "tail": "有了数据之后：判预算、出报告、让 AI 讲",
         "change": "你只需要动三个地方，别的都不用改",
-        "change1": "My-Project/main/main.c —— 加 5 处，下面每一处都标了放在哪",
+        "change1": "My-Project/main/main.c —— 加 3 行，下面标了每一行放哪",
         "change2": "My-Project/main/CMakeLists.txt —— 加一个名字 mcu_telemetry",
         "change3": "mcu-insight/budgets/my-board.json —— 新建这个文件，写你的红线",
-        "steps": "B. 要你自己粘 5 行，看板子的真实数据",
+        "steps": "B. 要你自己粘 3 行，看板子的真实数据",
         "here_tool": "在 mcu-insight\\ 目录里运行",
         "here_fw": "在 My-Project\\ 目录里运行",
         "back": "跑完长这样",
@@ -296,8 +312,20 @@ TEXT = {
         "created": "由这条命令创建",
         "step1_note2": "没有任何东西要你手工建：components\\ 或 mcu_telemetry\\ 不存在，"
                        "命令会自己创建。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层。",
-        "step2": "第二步：往 main.c 里加 5 处",
-        "step2_note": "每一处都标了放在哪里，文件里其他地方一个字都不用改。",
+        "step2": "第二步：改 main.c，最少 3 行",
+        "b_intro": "先说一句：一开始你什么都不用盯。先跑一次，报告会告诉你哪里紧张；紧张的地方再回来加一行。",
+        "s2_auto_h": "这 3 行写完，下面这些它自动就报，不用你写代码：",
+        "s2_auto": [
+            "堆：现在剩多少、历史最少剩多少、最大可分配块是多少",
+            "每个任务的栈还剩多少（开了下面第一个开关，连 httpd / mqtt / wifi 这些任务也会自动出现）",
+            "每个 CPU 核的空闲占比（开了第二个开关）",
+            "睡眠时间占比（开了第三个开关）",
+            "串口重试次数（它自己数，用来发现丢数据）",
+        ],
+        "s2_cfg_h": "那三个开关在 idf.py menuconfig 里打开，是配置，不是代码：",
+        "s2_cfg": "CONFIG_FREERTOS_USE_TRACE_FACILITY=y       自动发现工程里所有任务\nCONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y 每核空闲占比\nCONFIG_PM_ENABLE=y                         睡眠占比",
+        "s2_opt_h": "想要更细，再加这几行（可选，不加也能跑）：",
+        "step2_note": "三行的位置下面都标了。你原来的业务代码一个字都不用改。",
         "step3": "第三步：在 main/CMakeLists.txt 里加一个名字",
         "step3_note": "不加这一行，头文件找不到，编译直接停。",
         "step4": "第四步：编译烧写",
@@ -341,7 +369,8 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
     c = TEXT[lang]
     labels = LABELS[lang]
     other_label, other_href = labels["other"]
-    snippet = C_ZH if lang == "zh" else C_EN
+    snippet = C_MIN_ZH if lang == "zh" else C_MIN_EN
+    optional = C_OPT_ZH if lang == "zh" else C_OPT_EN
 
     def pre(text: str, cls: str = "out") -> str:
         return f'<pre class="{cls}">{html.escape(text)}</pre>' if text else ""
@@ -369,7 +398,12 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
               + f'<div><p class="note">{c["after"]}</p>' + pre(after_tree) + "</div>"
               + "</div>"
               + f'<p class="note" style="margin-top:12px">{c["step1_note2"]}</p>'),
-        block("2", c["step2"], c["here_fw"], c["step2_note"], pre(snippet, "run")),
+        block("2", c["step2"], c["here_fw"], c["step2_note"],
+              pre(snippet, "run")
+              + f'<p class="note">{c["s2_auto_h"]}</p><ul>'
+              + "".join(f"<li>{line}</li>" for line in c["s2_auto"]) + "</ul>"
+              + f'<p class="note">{c["s2_cfg_h"]}</p>' + pre(c["s2_cfg"], "run")
+              + f'<p class="note">{c["s2_opt_h"]}</p>' + pre(optional, "run")),
         block("3", c["step3"], c["here_fw"], c["step3_note"], pre(CMAKE_SNIPPET, "run")),
         block("4", c["step4"], c["here_fw"], c["step4_note"],
               pre("idf.py -p COM19 flash monitor", "run")),
@@ -430,7 +464,7 @@ def render(lang: str, facts: dict, repo: str = "") -> str:
               pre("python -m mcu_insight model build/model.tflite", "run")
               + f'<p class="note">{c["back"]}</p>' + pre(facts["model"])),
         "</section>",
-        f"<section><h2>{c['steps']}</h2>{route_b}</section>",
+        f"<section><h2>{c['steps']}</h2><p>{c['b_intro']}</p>{route_b}</section>",
         f"<section><h2>{c['tail']}</h2>{tail}</section>",
         f"<footer>{c['foot']}</footer>",
         "</div></body></html>",

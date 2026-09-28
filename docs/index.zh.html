@@ -49,7 +49,7 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 <li>把一个小组件拷进你的 ESP-IDF 工程，让固件每隔几秒报一次自己的状态</li><li>跑一条命令，得到一份<b>给人看的 HTML 报告</b>：固件占多少 Flash 和 RAM、每个任务还剩多少栈、堆最少剩多少、推理慢不慢</li><li>出问题的时候，得到一份<b>证据包</b>：所有已知事实，一条条编号，直接粘给任何 AI</li><li>再把 AI 的诊断拿回来核对：它会指出 AI 引用了根本不存在的证据</li>
 </ul><p class="note">不用联网、不用注册、不用仪器。</p></section>
 <section><h2>你只需要动三个地方，别的都不用改</h2><ul>
-<li>My-Project/main/main.c —— 加 5 处，下面每一处都标了放在哪</li><li>My-Project/main/CMakeLists.txt —— 加一个名字 mcu_telemetry</li><li>mcu-insight/budgets/my-board.json —— 新建这个文件，写你的红线</li>
+<li>My-Project/main/main.c —— 加 3 行，下面标了每一行放哪</li><li>My-Project/main/CMakeLists.txt —— 加一个名字 mcu_telemetry</li><li>mcu-insight/budgets/my-board.json —— 新建这个文件，写你的红线</li>
 </ul></section>
 <section><h2>A. 不改代码就能用</h2><p class="note">两条命令，读你编译好的文件，不用板子。只想确认还装得下吗，就走这条。</p>
 <div class=step><div class="where">在 mcu-insight\ 目录里运行</div><h3>固件占多少</h3><pre class="run">python -m mcu_insight analyze build/my_app.map --bin build/my_app.bin --partition 1500K</pre><p class="note">跑完长这样</p><pre class="out">MCU-Insight - static resource report
@@ -73,7 +73,7 @@ Memory
   weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
 ...</pre></div>
 </section>
-<section><h2>B. 要你自己粘 5 行，看板子的真实数据</h2><div class=step><div class="num">1</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>第一步：把组件拷进你的工程</h3><p class="note">就一条命令。它把 agent 拷进你的工程，并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">你的工程，运行前</p><pre class="out">My-Project\
+<section><h2>B. 要你自己粘 3 行，看板子的真实数据</h2><p>先说一句：一开始你什么都不用盯。先跑一次，报告会告诉你哪里紧张；紧张的地方再回来加一行。</p><div class=step><div class="num">1</div><div class="where">在 mcu-insight\ 目录里运行</div><h3>第一步：把组件拷进你的工程</h3><p class="note">就一条命令。它把 agent 拷进你的工程，并告诉你写了哪些文件。</p><pre class="run">python tools/sync_firmware.py ..\My-Project</pre><div class="grid" style="margin-top:12px"><div><p class="note">你的工程，运行前</p><pre class="out">My-Project\
   CMakeLists.txt
   main\main.c</pre></div><div><p class="note">运行后</p><pre class="out">My-Project\
   CMakeLists.txt
@@ -82,13 +82,12 @@ Memory
       CMakeLists.txt
       include/mcu_telemetry.h
       mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">没有任何东西要你手工建：components\ 或 mcu_telemetry\ 不存在，命令会自己创建。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层。</p></div><div class=step><div class="num">2</div><div class="where">在 My-Project\ 目录里运行</div><h3>第二步：往 main.c 里加 5 处</h3><p class="note">每一处都标了放在哪里，文件里其他地方一个字都不用改。</p><pre class="run">/* 第 1 处：文件最上面，和其他 #include 放一起 */
+  main\main.c</pre></div></div><p class="note" style="margin-top:12px">没有任何东西要你手工建：components\ 或 mcu_telemetry\ 不存在，命令会自己创建。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层。</p></div><div class=step><div class="num">2</div><div class="where">在 My-Project\ 目录里运行</div><h3>第二步：改 main.c，最少 3 行</h3><p class="note">三行的位置下面都标了。你原来的业务代码一个字都不用改。</p><pre class="run">/* 第 1 行：文件最上面，和其他 #include 放一起 */
 #include &quot;mcu_telemetry.h&quot;
 
-/* 第 2 处：app_main 外面，文件里任意位置 */
+/* 第 2 行：app_main 外面，文件里任意位置 */
 static const mcu_telemetry_config_t telemetry = {
-    .device = &quot;my-board&quot;,      /* 给板子起个名字，报告里用它区分设备 */
-    .firmware = FW_REVISION,   /* 可选：git 短哈希，方便对版本 */
+    .device = &quot;my-board&quot;,      /* 给板子起个名字 */
     .report_period_ms = 5000,  /* 每 5 秒上报一次 */
 };
 
@@ -96,17 +95,21 @@ void app_main(void)
 {
     /* ... 你原本的初始化 ... */
 
-    /* 第 3 处：硬件起来之后，加这一行 */
+    /* 第 3 行：硬件起来之后 */
     ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
 
-    /* 第 4 处：每建一个任务，紧跟一行注册，名字要和 xTaskCreate 里一致 */
-    xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
-    mcu_telemetry_register_task(&quot;control&quot;, 4096);
+    /* 下面还是你原来的业务代码，一行都不用改 */
+}</pre><p class="note">这 3 行写完，下面这些它自动就报，不用你写代码：</p><ul><li>堆：现在剩多少、历史最少剩多少、最大可分配块是多少</li><li>每个任务的栈还剩多少（开了下面第一个开关，连 httpd / mqtt / wifi 这些任务也会自动出现）</li><li>每个 CPU 核的空闲占比（开了第二个开关）</li><li>睡眠时间占比（开了第三个开关）</li><li>串口重试次数（它自己数，用来发现丢数据）</li></ul><p class="note">那三个开关在 idf.py menuconfig 里打开，是配置，不是代码：</p><pre class="run">CONFIG_FREERTOS_USE_TRACE_FACILITY=y       自动发现工程里所有任务
+CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y 每核空闲占比
+CONFIG_PM_ENABLE=y                         睡眠占比</pre><p class="note">想要更细，再加这几行（可选，不加也能跑）：</p><pre class="run">/* 可选：想知道某个任务的栈用了百分之多少，任务建好之后加一行 */
+xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
+mcu_telemetry_register_task(&quot;control&quot;, 4096);   /* 名字要和 xTaskCreate 里一致 */
 
-    /* 第 5 处：想盯的数值，就在它算出来的那一行下面加 */
-    mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
-    mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);  /* 自动出 p50 / p99 / min / max */
-}</pre></div><div class=step><div class="num">3</div><div class="where">在 My-Project\ 目录里运行</div><h3>第三步：在 main/CMakeLists.txt 里加一个名字</h3><p class="note">不加这一行，头文件找不到，编译直接停。</p><pre class="run"># My-Project/main/CMakeLists.txt
+/* 可选：你自己的数值，在它算出来的那一行下面加 */
+mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
+
+/* 可选：任何函数的耗时分布，在调用处加一行，自动出 p50 / p99 / 最大 / 最小 */
+mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">在 My-Project\ 目录里运行</div><h3>第三步：在 main/CMakeLists.txt 里加一个名字</h3><p class="note">不加这一行，头文件找不到，编译直接停。</p><pre class="run"># My-Project/main/CMakeLists.txt
 idf_component_register(
     SRCS &quot;main.c&quot;
     INCLUDE_DIRS &quot;.&quot;
