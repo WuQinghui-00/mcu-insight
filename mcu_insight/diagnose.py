@@ -387,8 +387,11 @@ def render_evidence(pack: dict) -> str:
         elif metric.get("dropped_series"):
             add(f"series {metric['name']}: dropped to fit the size budget")
     for other in pack["others"]:
-        add(f"metric {other['name']}{metric_label(other)}: last {other['last']:,.0f},"
-            f" min {other['min']:,.0f}, max {other['max']:,.0f}")
+        line = (f"metric {other['name']}{metric_label(other)}: last {other['last']:,.0f},"
+                f" min {other['min']:,.0f}, max {other['max']:,.0f}")
+        if other.get("description"):
+            line += f"; {other['description']}"
+        add(line)
 
     build = pack["build"]
     if build:
@@ -491,7 +494,10 @@ def pack_metric_names(evidence_text: str) -> set[str]:
             position = line.find(marker)
             if position < 0:
                 continue
-            token = line[position + len(marker):].split(":")[0].strip()
+            # "metric heap.min (B, high-water mark): ..." and "series heap.min [B]: ..."
+            # both have to parse back to the bare name, or the audit reports a
+            # metric as missing from the pack that defines it.
+            token = line[position + len(marker):].split(":")[0].strip().split(" ")[0].strip()
             if token:
                 names.add(token)
     return names

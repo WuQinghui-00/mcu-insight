@@ -78,6 +78,11 @@ class TempWorkspace:
         return gather_evidence(store, report, database=database,
                                config_path=config, **kwargs)
 
+    def pack_text(self) -> str:
+        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 135000, "stat": "min"}],
+                             count=12)
+        return render_evidence(pack)
+
 class EvidenceTest(TempWorkspace, unittest.TestCase):
     def test_violation_leads_the_pack(self):
         pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 135000, "stat": "min"}],
@@ -263,6 +268,23 @@ class DiagnoseCommandTest(TempWorkspace, unittest.TestCase):
         self.assertIn("Cite an evidence id", target.read_text(encoding="utf-8"))
 
 
+    def test_a_metric_line_with_a_unit_label_parses_back_to_its_name(self):
+        # The audit reads the names out of the rendered pack, so a label that
+        # rides along on the metric line must not become part of the name.
+        text = self.pack_text()
+        self.assertIn("(B,", text)
+        result = audit_answer("The heap.min series falls [E2] while heap.free follows it [E2].",
+                              text)
+        self.assertEqual([], result["unknown_metrics"])
+
+    def test_a_description_reaches_a_metric_that_has_no_series(self):
+        pack = self.pack_for("steady", [{"metric": "heap.min", "min": 1, "stat": "min"}], count=6,
+                             metric_meta={"custom.loop_period_ms": {
+                                 "kind": "build-time constant",
+                                 "description": "the configured loop period"}})
+        text = render_evidence(pack)
+        self.assertIn("custom.loop_period_ms (ms, build-time constant)", text)
+        self.assertIn("the configured loop period", text)
     def test_units_and_meaning_reach_the_rendered_lines(self):
         pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 10 ** 9, "stat": "min"}],
                              count=8,
@@ -317,11 +339,6 @@ class MetricMeaningTest(unittest.TestCase):
         self.assertEqual("set at build time", meaning["description"])
 class AuditTest(TempWorkspace, unittest.TestCase):
     """The tool checks the answer, not the model."""
-
-    def pack_text(self) -> str:
-        pack = self.pack_for("heap-leak", [{"metric": "heap.min", "min": 135000, "stat": "min"}],
-                             count=12)
-        return render_evidence(pack)
 
     def test_fabricated_evidence_id_is_caught(self):
         result = audit_answer("The heap fell [E11] and the cause is obvious [E99].",
