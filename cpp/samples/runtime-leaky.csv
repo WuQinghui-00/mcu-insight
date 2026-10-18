@@ -1,0 +1,22 @@
+metric,min,max
+custom.formatted_len,8.0,9.0
+custom.idle0_pct,99.0,99.0
+custom.idle1_pct,99.0,100.0
+custom.payload_first_byte,123.0,123.0
+custom.sample_raw,3207.0,65175.0
+custom.uart_tx_retries,0.0,0.0
+heap.free,185660.0,283908.0
+heap.largest,110592.0,155648.0
+heap.min,185568.0,283908.0
+task.IDLE0.stack_free_min,1028.0,1236.0
+task.IDLE1.stack_free_min,1024.0,1024.0
+task.Tmr Svc.stack_free_min,1548.0,1548.0
+task.format.stack_free_min,56.0,56.0
+task.format.stack_total,3072.0,3072.0
+task.ipc0.stack_free_min,504.0,504.0
+task.ipc1.stack_free_min,496.0,496.0
+task.main.stack_free_min,2072.0,2072.0
+task.sample.stack_free_min,1860.0,1860.0
+task.sample.stack_total,3072.0,3072.0
+task.telemetry.stack_free_min,2412.0,2412.0
+uptime_ms,35.0,145032.0

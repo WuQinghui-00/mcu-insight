@@ -1,0 +1,31 @@
+name: cpp
+
+on:
+  push:
+    paths:
+      - "cpp/**"
+      - ".github/workflows/cpp.yml"
+  pull_request:
+    paths:
+      - "cpp/**"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ cmake libgtest-dev
+
+      - name: Configure
+        run: cmake -S cpp -B cpp/build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build cpp/build -j
+
+      - name: Test
+        working-directory: cpp/build
+        run: ctest --output-on-failure
