@@ -55,155 +55,88 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 </ul>
 <p class="note"><b>The one thing people get wrong: idf.py runs in your-project; mcu_insight and sync_firmware.py run in tool-repo.</b></p></section>
 <section><h2>Practise on a project that is already broken</h2><p><code>examples/leaky-sensor-node/</code> is a small firmware with two deliberate defects in it, a README with the commands, and the answers. Walk this guide through that before touching your own project: the tool should report two violations, one of which nobody planted.</p></section>
-<section><h2>You touch three places, and nothing else</h2><ul>
-<li>your-project/main/main.c - three lines, each one shown below</li><li>your-project/main/CMakeLists.txt - one name added to REQUIRES</li><li>tool-repo/budgets/my-board.json - a new file with your limits in it</li>
-</ul></section>
-<section><h2>A. Change nothing</h2><p class="note">Two commands that read the files your build already made. Use these if the question is only whether it still fits.</p>
-<div class=step><div class="where">run in tool-repo</div><h3>What the build costs</h3><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight analyze &lt;your-project&gt;\build\&lt;your-project-name&gt;.map --bin &lt;your-project&gt;\build\&lt;your-project-name&gt;.bin --partition 1500K</pre><p class="note">The project name is the one inside project(...) in CMakeLists.txt. If you are unsure, look first:</p><pre class="run">Get-ChildItem &lt;your-project&gt;\build\*.map, &lt;your-project&gt;\build\*.bin</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - static resource report
-map       : build\signal_processing_system.map
+<section><h2>Three steps</h2>
+<div class="step"><div class="num">1</div><div class="where">tool repo</div>
+<h3>Edit four lines at the top of the script</h3>
+<p>Open <code>tools\insight.ps1</code>. The first block holds four variables, each with a comment:</p>
+<pre>$ProjectDir = "D:\your-project"       # your ESP-IDF project
+$Partition  = "1500K"                 # app partition size, blank to skip
+$ComPort    = "COM19"                 # serial port, only for -Runtime
+$Config     = "budgets\light.json"    # thresholds, only for -Runtime</pre>
+<p class="note">For static analysis only, the first line is all you change.</p></div>
 
-Flash image
-  estimated   :  1,065,624 B  (1.02 MiB)
-  actual .bin :  1,065,728 B  (1.02 MiB)  delta +104 B
+<div class="step"><div class="num">2</div><div class="where">tool repo · ESP-IDF PowerShell</div>
+<h3>Run one command</h3>
+<pre>cd &lt;tool-repo&gt;
+.\tools\insight.ps1             :: flash / RAM only, no board
+.\tools\insight.ps1 -Runtime    :: board: capture + judge + HTML, opens itself</pre>
+<p class="note">If scripts are blocked: <code>powershell -ExecutionPolicy Bypass -File .\tools\insight.ps1</code></p></div>
 
-  app partition: 1,536,000 B (1.46 MiB)
-  used         : 1,065,728 B (69.4%)  [#################.......]
-  free         : 470,272 B (459.2 KiB, 30.6%)
-...</pre></div>
-<div class=step><div class="where">run in tool-repo</div><h3>What the model costs</h3><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight model &lt;your-project&gt;\build\model.tflite</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - TensorFlow Lite model report
-model     : training\out\waveform_model_real.tflite
-size      : 6,544 B (6.4 KiB)
-schema    : version 3   subgraphs 1   operators 4   tensors 11
-description: MLIR Converted.
-
-Memory
-  weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
-...</pre></div>
+<div class="step"><div class="num">3</div><div class="where">read the result</div>
+<h3>Three places</h3>
+<ul>
+<li><b>Terminal</b>: flash / RAM totals, partition headroom, top consumers</li>
+<li><b>File</b>: <code>your-project\build\insight\analyze.txt</code></li>
+<li><b>HTML</b>: <code>your-project\build\insight\report.html</code> (only with <code>-Runtime</code>)</li>
+</ul></div>
 </section>
-<section><h2>B. Add three lines, and see what the board is really doing</h2><p>One thing to know first: you do not have to decide what to watch. Run it once and the report shows where it is tight; add a line for that place afterwards.</p><div class=step><div class="num">1</div><div class="where">run in tool-repo</div><h3>Copy the component in</h3><p class="note">One command. It copies the agent into your project and tells you what it wrote.</p><pre class="run">cd &lt;tool-repo&gt;
-python tools/sync_firmware.py &lt;your-project&gt;</pre><div class="grid" style="margin-top:12px"><div><p class="note">your project before</p><pre class="out">your-project\
-  CMakeLists.txt
-  main\main.c</pre></div><div><p class="note">your project after</p><pre class="out">your-project\
-  CMakeLists.txt
-  components\            &lt;- created by the command
-    mcu_telemetry\       &lt;- created by the command
-      CMakeLists.txt
-      include/mcu_telemetry.h
-      mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">Nothing is created by hand: if components\ or mcu_telemetry\ do not exist, the command makes them. The argument must be the project root, the directory that holds CMakeLists.txt.</p></div><div class=step><div class="num">2</div><div class="where">run in your-project</div><h3>Change main.c: three lines</h3><p class="note">Each line is marked with where it goes. Nothing else in the file changes.</p><pre class="run">/* 1. at the very top, with the other includes */
-#include &quot;mcu_telemetry.h&quot;
 
-/* 2. outside app_main, anywhere in the file */
-static const mcu_telemetry_config_t telemetry = {
-    .device = &quot;my-board&quot;,      /* a name for this board */
-    .report_period_ms = 5000,  /* report every 5 seconds */
+<section><h2>What the script does</h2>
+<table>
+<tr><td>1</td><td>Runs <code>idf.py build</code> and picks up the fresh <code>.map</code> / <code>.bin</code></td></tr>
+<tr><td>2</td><td>Runs <code>mcu_insight analyze</code> for flash / RAM and partition headroom</td></tr>
+<tr><td>3</td><td>With <code>-Runtime</code>: 30 frames over serial → <code>check</code> → <code>report</code></td></tr>
+</table>
+</section>
+
+<section><h2>Just asking "does it still fit?"</h2>
+<p>No board, no script edit, one command:</p>
+<pre>cd &lt;tool-repo&gt;
+.\.venv\Scripts\python.exe -m mcu_insight analyze &lt;project&gt;\build\app.map --bin &lt;project&gt;\build\app.bin --partition 1500K</pre>
+</section>
+
+<section><h2>When something fails</h2>
+<table class="errors">
+<tr><td>idf.py not found</td><td>Open the ESP-IDF PowerShell window, then run the script</td></tr>
+<tr><td>Scripts blocked</td><td><code>powershell -ExecutionPolicy Bypass -File .\tools\insight.ps1</code></td></tr>
+<tr><td>Serial port busy</td><td>Close <code>idf.py monitor</code>; one program per port</td></tr>
+<tr><td>No HTML</td><td>HTML is only produced with <code>-Runtime</code></td></tr>
+<tr><td>Unmapped (not counted) is large</td><td>Not a stock ESP32 — the address map needs updating</td></tr>
+<tr><td>analyze cannot find the .map</td><td>Run <code>idf.py build</code> successfully first</td></tr>
+</table>
+</section>
+
+<section><h2>Prefer to drive every step yourself</h2>
+<p class="note">This is all the script does, if you want to take it apart.</p>
+<details><summary>Show the details</summary>
+<h3 style="margin-top:14px">Copy the component in</h3>
+<pre>cd &lt;tool-repo&gt;
+python tools\sync_firmware.py &lt;your-project&gt;</pre>
+<h3 style="margin-top:14px">Three lines in main.c</h3>
+<pre>#include "mcu_telemetry.h"
+
+mcu_telemetry_config_t telemetry = {
+    .device = "my-board", .firmware = "v1.0.0", .report_period_ms = 5000,
 };
+ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
-void app_main(void)
-{
-    /* ... your own initialisation ... */
+mcu_telemetry_register_task("sensor", TASK_STACK_SENSOR);
+mcu_telemetry_set_custom_int("loop_period_ms", 200);</pre>
+<h3 style="margin-top:14px">One name in main\CMakeLists.txt</h3>
+<pre>idf_component_register(SRCS "main.c"
+                       INCLUDE_DIRS "."
+                       REQUIRES mcu_telemetry)</pre>
+<h3 style="margin-top:14px">Thresholds</h3>
+<p>Copy <code>budgets/light.json</code>, change the numbers, point <code>-Config</code> at it.</p>
+</details>
+</section>
 
-    /* 3. after the hardware is up */
-    ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
-
-    /* the rest of your code does not change */
-}</pre><p class="note">Those three lines are enough. The agent already reports all of this, with no code from you:</p><ul><li>heap: how much is free now, the smallest it has been, the largest allocatable block</li><li>how much stack every task has left (with the first switch below, httpd, mqtt and wifi appear without being registered)</li><li>idle share per CPU core (second switch)</li><li>share of time spent in light sleep (third switch)</li><li>UART retries, counted by the agent, which is how lost bytes show up</li></ul><p class="note">Those three switches are menuconfig settings, not code:</p><pre class="run">CONFIG_FREERTOS_USE_TRACE_FACILITY=y       discover every task automatically
-CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y idle share per core
-CONFIG_PM_ENABLE=y                        light sleep share</pre><p class="note">Want more detail? Add these when you want them (optional):</p><pre class="run">/* optional: how much of a task&#x27;s stack is used. Same name as xTaskCreate. */
-xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
-mcu_telemetry_register_task(&quot;control&quot;, 4096);
-
-/* optional: a number of your own, next to where it is computed */
-mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
-
-/* optional: a latency distribution for any call, one line at the call site */
-mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">run in your-project</div><h3>Add one name to main/CMakeLists.txt</h3><p class="note">Without this line the header will not resolve and the build stops.</p><pre class="run"># My-Project/main/CMakeLists.txt
-idf_component_register(
-    SRCS &quot;main.c&quot;
-    INCLUDE_DIRS &quot;.&quot;
-    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note">If you also want to set EXTRA_COMPONENT_DIRS in the project CMakeLists.txt yourself, guard it:</p><pre class="run"># My-Project/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
-if(EXISTS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
-    set(EXTRA_COMPONENT_DIRS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
-endif()
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(my_app)</pre></div><div class=step><div class="num">4</div><div class="where">run in your-project</div><h3>Build and flash</h3><p class="note">From the firmware project, the usual ESP-IDF command. The board now prints one JSON line every five seconds.</p><pre class="run">cd &lt;your-project&gt;
-idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">run in tool-repo</div><h3>Capture</h3><p class="note">Run this while the board is doing whatever you want to measure. Frames go into a SQLite file, so everything after this reads the file instead of the board.</p><p class="note">The first capture needs the serial library. Install it once, or run the capture with the ESP-IDF python, which already has it:</p><pre class="run">cd &lt;tool-repo&gt;\npython -m mcu_insight collect --db captures/board.db --source serial:COM19 --limit 30</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - telemetry summary
-database  : captures\fault-off.db
-
-Devices
-  esp32-signal-processor       21 frames   fw dev        100.1 s of uptime
-
-Metric trends (esp32-signal-processor, 21 frames)
-  uptime_ms                              13,320 -&gt;    103,370   change +90,050
-  custom.inference_us                     1,320 -&gt;        954   change -366
-...</pre></div></section>
-<section><h2>Something failed? Look it up here</h2><p class="note">These are the four a reader following this guide actually hits. Each one names the cause and a one line fix.</p>
-<table class=errors>
-<tr><td>CMakeLists.txt not found in project directory</td><td>You are not in the project directory. cd &lt;your-project&gt; first, then run idf.py.</td></tr><tr><td>Failed to resolve component &#x27;mcu_telemetry&#x27;</td><td>Step one was skipped, so the component is not there. Run sync_firmware.py from &lt;tool-repo&gt;.</td></tr><tr><td>reading a serial port needs pyserial</td><td>The serial library is missing. pip install pyserial, or capture with the ESP-IDF python.</td></tr><tr><td>Directory specified in EXTRA_COMPONENT_DIRS doesn&#x27;t exist</td><td>Also a skipped step one. If you wrote that line yourself, guard it as shown above.</td></tr>
-</table></section>
-<section><h2>Once there is data: judge it, and get the report</h2><div class=step><div class="num">6</div><div class="where">run in tool-repo</div><h3>Write your limits</h3><p class="note">One new file in the tool repository. This is the only thing you write by hand: the numbers your project must not break. <code>heap.min</code> is the smallest free heap, <code>min_rate_per_s</code> is how fast it may fall.</p><pre class="run">{
-  &quot;rules&quot;: [
-    {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
-    {&quot;metric&quot;: &quot;task.*.stack_free_min&quot;, &quot;min&quot;: 256, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
-  ],
-  &quot;baseline&quot;: {&quot;path&quot;: &quot;my-board-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
-}</pre></div><div class=step><div class="num">7</div><div class="where">run in tool-repo</div><h3>Judge, and get the report</h3><p class="note">Exit code 0 means pass, 1 means fail or a rule that could not be judged, so a CI job can gate on it. The report is one file: double-click it, no server needed.</p><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">what comes back</p><pre class="out">MCU-Insight - resource checks
-database  : captures\fault-heap.db
-devices   : esp32-signal-processor
-rules     : 7   metrics matched: 21
-
-Violations (2)
-  ! esp32-signal-processor heap.free: falls at -956.9 per second, slope &gt;= -64/s over &gt;= 60 s of steady state
-  ! esp32-signal-processor heap.min: 50168 is below 100000
-
-Changed since baseline (budgets\signal_baseline.json)
-  heap.min                              147,956 -&gt;     50,168   -66.1%
-  heap.free                             148,168 -&gt;     50,372   -66.0%
-  custom.infer_samples                      114 -&gt;         49   -57.0%
-  uptime_ms                             248,337 -&gt;    108,420   -56.3%
-  heap.largest                          110,592 -&gt;     49,152   -55.6%
-  custom.infer_max_us                     2,272 -&gt;      1,348   -40.7%
-  task.uart_cmd.stack_free_min            2,892 -&gt;      2,068   -28.5%
-  custom.inference_us                     1,086 -&gt;      1,335   +22.9%
-  custom.model_class                          0 -&gt;          2   +2
-  custom.model_expected                       0 -&gt;          2   +2
-
-3 metric(s) not present in the baseline
-
-RESULT: FAIL</pre><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">the example report, made from the capture committed here: <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">run in tool-repo</div><h3>Get an evidence pack, and have an AI explain it</h3><p class="note">The tool does not guess. It writes every known fact into a numbered pack and stops. You paste that pack into any AI, then check the answer back against it.</p><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. the pack it writes (diagnose)</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
-[E1] device esp32-signal-processor (firmware dev)
-[E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
-[E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
-[E4] budget file budgets/signal.json
-[E5] baseline capture: not recorded -- the file predates the capture shape. The one duration it carries is uptime_ms 248,337, the point the device had reached when the snapshot was taken
-[E6] note the baseline was taken after 248 s of uptime and this capture holds 95 s of steady state. A level delta on a high-water mark carries part of that difference, so the rates are the ones to compare; a baseline saved from now on records its own span and settles it
-[E7] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
-...</pre></div><div><p class="note">2. what the AI says</p><pre class="out">The deliberately injected leak in main/main.c: s_leak_sink = malloc(2048) executed once per main
-loop iteration while s_fault == FAULT_HEAP [E98]. The pack&#x27;s own provenance states the fault is
-injected on purpose [E3], the capture is taken by tools/fault_matrix.py --port COM19 [E4], and the
-fault is armed at run time over the console, where FAULT heap means &quot;leak 2 KB per loop&quot; [E98].</pre></div><div><p class="note">3. checked against the pack (audit)</p><pre class="out">MCU-INSIGHT ANSWER AUDIT
-citations   : 50 distinct of 126 in the pack (99 available)
-unknown id  : none
-unknown name: none
-uncited line: 0 (a warning, not an error)
-
-RESULT: OK</pre></div></div><p class="note">To have it answer in Chinese, add one flag:</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">Evidence ids like [E12] and the metric names stay as the tool writes them, because they are identifiers and translating them would break the audit. Only the instructions and the answer change language.</p><p class="note">The diagnosis that comes back is always these four parts:</p><ul><li>Root cause: the single most likely one, a confidence level, and the evidence ids behind it</li><li>Alternatives: what else could produce this, and which observation rules each one out</li><li>Fix: the smallest change that addresses the root cause</li><li>Verification: which command to run, which metric should move, and roughly how much</li></ul><pre class="run">cd &lt;tool-repo&gt;
-python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">The last step is the check: every [E12] in the answer has to exist in the pack, and an answer that cites an id which does not exist fails.</p></div></section>
-<section><h2>So what is it worth</h2><ul>
-<li><b>It sees what an AI cannot.</b> A model can read your code. It cannot read what is on your board: whether a stack has 512 bytes left or 256, whether the smallest free heap was 24 KB or 4 KB, whether inference P99 is 30 ms or 55 ms. Those exist only if something measures them.</li><li><b>It does not let the AI make things up.</b> Every fact is numbered, the answer has to cite it, and the audit fails an answer that cites an id which does not exist. Without that layer, a diagnosis only sounds reasonable.</li><li><b>It can say why this change made it worse.</b> With a baseline to compare against -- revision, capture length, and the slope of every metric -- it can tell a real regression from a capture that was simply shorter.</li>
-</ul><p class="note">In one line: rules and statistics detect, an AI explains. The tool brings the evidence, the AI argues from it, and the citations between the two are checked by machine.</p></section>
-<section><h2>What you end up with</h2><p class="note">Run the whole thing and these are what is left over. All of it is on your own machine; nothing is uploaded anywhere.</p><ul>
-<li><b>report.html</b> - for a human: double-click it, one page on what the build costs and where it is tight.</li><li><b>captures/board.db</b> - your own data: every later command reads this file, so the board stays unplugged.</li><li><b>budgets/...-baseline.json</b> - for the next change: it is compared automatically and tells you which metric moved.</li><li><b>prompt.txt and answer.md</b> - the exchange with the AI: the evidence pack, and the diagnosis it gave.</li><li><b>the exit code of check</b> - for CI: 0 pass, 1 fail, so a pipeline can gate on it.</li>
-</ul></section>
-<footer>Every output on this page was produced by running the tool against the captures and the build committed in this repository. Rebuild it with <code>python tools/build_guide.py</code>.</footer>
+<section><h2>What you end up with</h2>
+<ul>
+<li><code>analyze.txt</code>: what the image costs and how much partition is left</li>
+<li><code>report.html</code>: charts plus verdicts, double-click, no server</li>
+<li>An exit code: <code>0</code> pass, non-zero fail — gate CI on it</li>
+</ul>
+<p class="note">All local. Nothing is uploaded.</p>
+</section>
 </div></body></html>

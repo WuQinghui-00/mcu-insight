@@ -55,155 +55,88 @@ footer { margin-top: 22px; color: #6b7280; font-size: 13px; }
 </ul>
 <p class="note"><b>最容易搞错的一条：idf.py 在你的工程里跑；mcu_insight 和 sync_firmware.py 在工具仓库里跑。</b></p></section>
 <section><h2>先拿一个已经坏了的工程练手</h2><p><code>examples/leaky-sensor-node/</code> 是一个故意写坏的小固件，README 里有完整命令，也有答案。先拿它把这份指南走一遍，再动你自己的工程——工具应该报出两条违规，其中一条连作者都没打算埋。</p></section>
-<section><h2>你只需要动三个地方，别的都不用改</h2><ul>
-<li>你的工程/main/main.c —— 加 3 行，下面标了每一行放哪</li><li>你的工程/main/CMakeLists.txt —— 加一个名字 mcu_telemetry</li><li>工具仓库/budgets/my-board.json —— 新建这个文件，写你的红线</li>
-</ul></section>
-<section><h2>A. 不改代码就能用</h2><p class="note">两条命令，读你编译好的文件，不用板子。只想确认还装得下吗，就走这条。</p>
-<div class=step><div class="where">在工具仓库里运行</div><h3>固件占多少</h3><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight analyze &lt;你的工程&gt;\build\&lt;工程名&gt;.map --bin &lt;你的工程&gt;\build\&lt;工程名&gt;.bin --partition 1500K</pre><p class="note">工程名就是 CMakeLists.txt 里 project(...) 括号里那个名字。不确定就先查一下：</p><pre class="run">Get-ChildItem &lt;你的工程&gt;\build\*.map, &lt;你的工程&gt;\build\*.bin</pre><p class="note">跑完长这样</p><pre class="out">MCU-Insight - static resource report
-map       : build\signal_processing_system.map
+<section><h2>怎么用：三步</h2>
+<div class="step"><div class="num">1</div><div class="where">工具仓库</div>
+<h3>改脚本顶部四行</h3>
+<p>打开 <code>tools\insight.ps1</code>，文件最上面有四个变量，每个都有中文注释：</p>
+<pre>$ProjectDir = "D:\你的工程"          # 你的 ESP-IDF 工程目录
+$Partition  = "1500K"                # app 分区大小，留空就跳过
+$ComPort    = "COM19"                # 串口号，只有 -Runtime 才用
+$Config     = "budgets\light.json"   # 阈值配置，只有 -Runtime 才用</pre>
+<p class="note">只做静态分析的话，改第一行就够了。</p></div>
 
-Flash image
-  estimated   :  1,065,624 B  (1.02 MiB)
-  actual .bin :  1,065,728 B  (1.02 MiB)  delta +104 B
+<div class="step"><div class="num">2</div><div class="where">工具仓库 · ESP-IDF PowerShell</div>
+<h3>跑一条命令</h3>
+<pre>cd &lt;工具仓库&gt;
+.\tools\insight.ps1             :: 只算 Flash / RAM，不用板子
+.\tools\insight.ps1 -Runtime    :: 连板子：采集 + 判定 + 出 HTML 并自动打开</pre>
+<p class="note">提示"禁止运行脚本"时改用：<code>powershell -ExecutionPolicy Bypass -File .\tools\insight.ps1</code></p></div>
 
-  app partition: 1,536,000 B (1.46 MiB)
-  used         : 1,065,728 B (69.4%)  [#################.......]
-  free         : 470,272 B (459.2 KiB, 30.6%)
-...</pre></div>
-<div class=step><div class="where">在工具仓库里运行</div><h3>模型占多少</h3><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight model &lt;你的工程&gt;\build\model.tflite</pre><p class="note">跑完长这样</p><pre class="out">MCU-Insight - TensorFlow Lite model report
-model     : training\out\waveform_model_real.tflite
-size      : 6,544 B (6.4 KiB)
-schema    : version 3   subgraphs 1   operators 4   tensors 11
-description: MLIR Converted.
-
-Memory
-  weights in file   :     2,924 B  (44.7% of file, 2,659 parameters)
-...</pre></div>
+<div class="step"><div class="num">3</div><div class="where">看结果</div>
+<h3>三个地方</h3>
+<ul>
+<li><b>终端</b>：Flash / RAM 总量、分区余量、Top 占用组件</li>
+<li><b>文件</b>：<code>你的工程\build\insight\analyze.txt</code></li>
+<li><b>HTML</b>：<code>你的工程\build\insight\report.html</code>（只有 <code>-Runtime</code> 才生成）</li>
+</ul></div>
 </section>
-<section><h2>B. 要你自己粘 3 行，看板子的真实数据</h2><p>先说一句：一开始你什么都不用盯。先跑一次，报告会告诉你哪里紧张；紧张的地方再回来加一行。</p><div class=step><div class="num">1</div><div class="where">在工具仓库里运行</div><h3>第一步：把组件拷进你的工程</h3><p class="note">就一条命令。它把 agent 拷进你的工程，并告诉你写了哪些文件。</p><pre class="run">cd &lt;工具仓库&gt;
-python tools/sync_firmware.py &lt;你的工程&gt;</pre><div class="grid" style="margin-top:12px"><div><p class="note">你的工程，运行前</p><pre class="out">你的工程\
-  CMakeLists.txt
-  main\main.c</pre></div><div><p class="note">运行后</p><pre class="out">你的工程\
-  CMakeLists.txt
-  components\            &lt;- 由这条命令创建
-    mcu_telemetry\       &lt;- 由这条命令创建
-      CMakeLists.txt
-      include/mcu_telemetry.h
-      mcu_telemetry.c
-  main\main.c</pre></div></div><p class="note" style="margin-top:12px">没有任何东西要你手工建：components\ 或 mcu_telemetry\ 不存在，命令会自己创建。参数必须是工程根目录，也就是放 CMakeLists.txt 的那一层。</p></div><div class=step><div class="num">2</div><div class="where">在你的工程里运行</div><h3>第二步：改 main.c，最少 3 行</h3><p class="note">三行的位置下面都标了。你原来的业务代码一个字都不用改。</p><pre class="run">/* 第 1 行：文件最上面，和其他 #include 放一起 */
-#include &quot;mcu_telemetry.h&quot;
 
-/* 第 2 行：app_main 外面，文件里任意位置 */
-static const mcu_telemetry_config_t telemetry = {
-    .device = &quot;my-board&quot;,      /* 给板子起个名字 */
-    .report_period_ms = 5000,  /* 每 5 秒上报一次 */
+<section><h2>脚本背后做了什么</h2>
+<table>
+<tr><td>1</td><td>跑 <code>idf.py build</code>，拿到最新的 <code>.map</code> 和 <code>.bin</code></td></tr>
+<tr><td>2</td><td>跑 <code>mcu_insight analyze</code>，算 Flash / RAM 和分区余量</td></tr>
+<tr><td>3</td><td>加了 <code>-Runtime</code> 才继续：串口采 30 帧 → <code>check</code> 判阈值 → <code>report</code> 出 HTML</td></tr>
+</table>
+</section>
+
+<section><h2>只想问"还装得下吗"</h2>
+<p>不用板子，也不用改脚本，一条命令：</p>
+<pre>cd &lt;工具仓库&gt;
+.\.venv\Scripts\python.exe -m mcu_insight analyze &lt;你的工程&gt;\build\app.map --bin &lt;你的工程&gt;\build\app.bin --partition 1500K</pre>
+</section>
+
+<section><h2>出问题怎么办</h2>
+<table class="errors">
+<tr><td>找不到 idf.py</td><td>先打开「ESP-IDF PowerShell」窗口，再跑脚本</td></tr>
+<tr><td>禁止运行脚本</td><td><code>powershell -ExecutionPolicy Bypass -File .\tools\insight.ps1</code></td></tr>
+<tr><td>串口打不开</td><td>关掉 <code>idf.py monitor</code>，串口一次只能被一个程序占用</td></tr>
+<tr><td>没有 HTML</td><td>HTML 只有加 <code>-Runtime</code> 才生成</td></tr>
+<tr><td>未映射(不计入) 很大</td><td>芯片不是 ESP32 原版，地址表要改</td></tr>
+<tr><td>analysis 报找不到 .map</td><td>先 <code>idf.py build</code> 成功一次，产物在 <code>build\</code> 下</td></tr>
+</table>
+</section>
+
+<section><h2>想手动控制每一步</h2>
+<p class="note">脚本做的事就这些，想拆开自己做时可以对着改。</p>
+<details><summary>展开看细节</summary>
+<h3 style="margin-top:14px">把组件拷进工程</h3>
+<pre>cd &lt;工具仓库&gt;
+python tools\sync_firmware.py &lt;你的工程&gt;</pre>
+<h3 style="margin-top:14px">在 main.c 里加三行</h3>
+<pre>#include "mcu_telemetry.h"
+
+mcu_telemetry_config_t telemetry = {
+    .device = "my-board", .firmware = "v1.0.0", .report_period_ms = 5000,
 };
+ESP_ERROR_CHECK(mcu_telemetry_start(&telemetry));
 
-void app_main(void)
-{
-    /* ... 你原本的初始化 ... */
+mcu_telemetry_register_task("sensor", TASK_STACK_SENSOR);
+mcu_telemetry_set_custom_int("loop_period_ms", 200);</pre>
+<h3 style="margin-top:14px">在 main\CMakeLists.txt 里加一个名字</h3>
+<pre>idf_component_register(SRCS "main.c"
+                       INCLUDE_DIRS "."
+                       REQUIRES mcu_telemetry)</pre>
+<h3 style="margin-top:14px">红线配置</h3>
+<p>复制 <code>budgets/light.json</code> 改成自己的数值，再用 <code>-Config</code> 指过去。</p>
+</details>
+</section>
 
-    /* 第 3 行：硬件起来之后 */
-    ESP_ERROR_CHECK(mcu_telemetry_start(&amp;telemetry));
-
-    /* 下面还是你原来的业务代码，一行都不用改 */
-}</pre><p class="note">这 3 行写完，下面这些它自动就报，不用你写代码：</p><ul><li>堆：现在剩多少、历史最少剩多少、最大可分配块是多少</li><li>每个任务的栈还剩多少（开了下面第一个开关，连 httpd / mqtt / wifi 这些任务也会自动出现）</li><li>每个 CPU 核的空闲占比（开了第二个开关）</li><li>睡眠时间占比（开了第三个开关）</li><li>串口重试次数（它自己数，用来发现丢数据）</li></ul><p class="note">那三个开关在 idf.py menuconfig 里打开，是配置，不是代码：</p><pre class="run">CONFIG_FREERTOS_USE_TRACE_FACILITY=y       自动发现工程里所有任务
-CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=y 每核空闲占比
-CONFIG_PM_ENABLE=y                         睡眠占比</pre><p class="note">想要更细，再加这几行（可选，不加也能跑）：</p><pre class="run">/* 可选：想知道某个任务的栈用了百分之多少，任务建好之后加一行 */
-xTaskCreate(control_task, &quot;control&quot;, 4096, NULL, 2, NULL);
-mcu_telemetry_register_task(&quot;control&quot;, 4096);   /* 名字要和 xTaskCreate 里一致 */
-
-/* 可选：你自己的数值，在它算出来的那一行下面加 */
-mcu_telemetry_set_custom_int(&quot;loop_jitter_us&quot;, jitter);
-
-/* 可选：任何函数的耗时分布，在调用处加一行，自动出 p50 / p99 / 最大 / 最小 */
-mcu_telemetry_histogram_add(&quot;infer&quot;, latency_us);</pre></div><div class=step><div class="num">3</div><div class="where">在你的工程里运行</div><h3>第三步：在 main/CMakeLists.txt 里加一个名字</h3><p class="note">不加这一行，头文件找不到，编译直接停。</p><pre class="run"># My-Project/main/CMakeLists.txt
-idf_component_register(
-    SRCS &quot;main.c&quot;
-    INCLUDE_DIRS &quot;.&quot;
-    REQUIRES driver nvs_flash freertos mcu_telemetry)</pre><p class="note">如果你还想自己在工程根 CMakeLists.txt 里写 EXTRA_COMPONENT_DIRS，必须加判断：</p><pre class="run"># My-Project/CMakeLists.txt
-cmake_minimum_required(VERSION 3.16)
-
-if(EXISTS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
-    set(EXTRA_COMPONENT_DIRS &quot;${CMAKE_CURRENT_LIST_DIR}/components&quot;)
-endif()
-
-include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(my_app)</pre></div><div class=step><div class="num">4</div><div class="where">在你的工程里运行</div><h3>第四步：编译烧写</h3><p class="note">在固件工程里，就是平时的 ESP-IDF 命令。烧完之后，板子每 5 秒会吐一行 JSON。</p><pre class="run">cd &lt;你的工程&gt;
-idf.py -p COM19 flash monitor</pre></div><div class=step><div class="num">5</div><div class="where">在工具仓库里运行</div><h3>第五步：采集</h3><p class="note">在板子跑着你想测的那个场景时执行这条命令。它会边收边打印，每 5 秒一行；30 帧约 150 秒。中途 Ctrl+C 不会丢数据——每帧都已经写进库里了。遥测帧存进一个 SQLite 文件，' 后面所有命令都读文件，不用再插板子。</p><p class="note">第一次采集会需要串口库，先装一次（或用 ESP-IDF 自带的 python 跑采集，它自带）：</p><pre class="run">cd &lt;工具仓库&gt;\npython -m mcu_insight collect --db captures/board.db --source serial:COM19 --limit 30</pre><p class="note">跑完长这样</p><pre class="out">MCU-Insight - telemetry summary
-database  : captures\fault-off.db
-
-Devices
-  esp32-signal-processor       21 frames   fw dev        100.1 s of uptime
-
-Metric trends (esp32-signal-processor, 21 frames)
-  uptime_ms                              13,320 -&gt;    103,370   change +90,050
-  custom.inference_us                     1,320 -&gt;        954   change -366
-...</pre></div></section>
-<section><h2>报错了？对着这张表找</h2><p class="note">这四条是照着这份指南做时最容易撞上的，每条都写明原因和一行修复。</p>
-<table class=errors>
-<tr><td>CMakeLists.txt not found in project directory</td><td>你不在工程目录里。先 cd &lt;你的工程&gt;，再跑 idf.py。</td></tr><tr><td>Failed to resolve component &#x27;mcu_telemetry&#x27;</td><td>第一步没跑（组件没拷进去）。回到 &lt;工具仓库&gt; 跑 sync_firmware.py。</td></tr><tr><td>reading a serial port needs pyserial</td><td>串口库没装。pip install pyserial，或改用 ESP-IDF 的 python 跑采集。</td></tr><tr><td>Directory specified in EXTRA_COMPONENT_DIRS doesn&#x27;t exist</td><td>同样是没有先跑第一步；如果你自己写了那行，照上面加 if(EXISTS ...) 判断。</td></tr>
-</table></section>
-<section><h2>有了数据之后：判预算、出报告、让 AI 讲</h2><div class=step><div class="num">6</div><div class="where">在工具仓库里运行</div><h3>第六步：写下你的红线</h3><p class="note">在工具仓库里新建一个文件。这是唯一需要你自己写的东西：你的工程不许越过的数值。<code>heap.min</code> 是最小空闲堆，<code>min_rate_per_s</code> 是它每秒最多能掉多少。</p><pre class="run">{
-  &quot;rules&quot;: [
-    {&quot;metric&quot;: &quot;heap.min&quot;, &quot;min&quot;: 100000, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;heap.free&quot;, &quot;min_rate_per_s&quot;: -64, &quot;min_span_ms&quot;: 60000},
-    {&quot;metric&quot;: &quot;task.*.stack_free_min&quot;, &quot;min&quot;: 256, &quot;stat&quot;: &quot;min&quot;},
-    {&quot;metric&quot;: &quot;custom.infer_p99_us&quot;, &quot;max&quot;: 5000, &quot;stat&quot;: &quot;max&quot;}
-  ],
-  &quot;baseline&quot;: {&quot;path&quot;: &quot;my-board-baseline.json&quot;, &quot;max_change_pct&quot;: 20}
-}</pre></div><div class=step><div class="num">7</div><div class="where">在工具仓库里运行</div><h3>第七步：判预算，顺便出报告</h3><p class="note">退出码 0 是通过，1 是不通过或规则无法判定，所以可以直接卡 CI。报告就是一个文件，双击打开，不需要服务器。</p><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight check --db captures/board.db --config budgets/my-board.json</pre><p class="note">跑完长这样</p><pre class="out">MCU-Insight - resource checks
-database  : captures\fault-heap.db
-devices   : esp32-signal-processor
-rules     : 7   metrics matched: 21
-
-Violations (2)
-  ! esp32-signal-processor heap.free: falls at -956.9 per second, slope &gt;= -64/s over &gt;= 60 s of steady state
-  ! esp32-signal-processor heap.min: 50168 is below 100000
-
-Changed since baseline (budgets\signal_baseline.json)
-  heap.min                              147,956 -&gt;     50,168   -66.1%
-  heap.free                             148,168 -&gt;     50,372   -66.0%
-  custom.infer_samples                      114 -&gt;         49   -57.0%
-  uptime_ms                             248,337 -&gt;    108,420   -56.3%
-  heap.largest                          110,592 -&gt;     49,152   -55.6%
-  custom.infer_max_us                     2,272 -&gt;      1,348   -40.7%
-  task.uart_cmd.stack_free_min            2,892 -&gt;      2,068   -28.5%
-  custom.inference_us                     1,086 -&gt;      1,335   +22.9%
-  custom.model_class                          0 -&gt;          2   +2
-  custom.model_expected                       0 -&gt;          2   +2
-
-3 metric(s) not present in the baseline
-
-RESULT: FAIL</pre><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight report --db captures/board.db --config budgets/my-board.json --out report.html</pre><p class="note">这是仓库里真实生成的那份示例报告： <a href="report-demo.html">docs/report-demo.html</a></p></div><div class=step><div class="num">8</div><div class="where">在工具仓库里运行</div><h3>第八步：出证据包，让 AI 来讲</h3><p class="note">工具不猜。它把所有已知事实写成一份带编号的证据包就停手。你把这份包粘给任何 AI，再把答案拿回来核对。</p><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --out prompt.txt</pre><div class="grid" style="margin-top:12px"><div><p class="note">1. 它写出的证据包（diagnose）</p><pre class="out">MCU-INSIGHT EVIDENCE PACK
-[E1] device esp32-signal-processor (firmware dev)
-[E2] capture 21 frames over 1 boot session(s) from captures\fault-heap.db
-[E3] provenance FAULT heap, a heap leak is injected on purpose. The file name says so, so unless it was renamed, what follows is deliberate test behaviour, not a regression in the application code.
-[E4] budget file budgets/signal.json
-[E5] baseline capture: not recorded -- the file predates the capture shape. The one duration it carries is uptime_ms 248,337, the point the device had reached when the snapshot was taken
-[E6] note the baseline was taken after 248 s of uptime and this capture holds 95 s of steady state. A level delta on a high-water mark carries part of that difference, so the rates are the ones to compare; a baseline saved from now on records its own span and settles it
-[E7] baseline revision unknown: the baseline file records no revision, so the diff range has to be given with --diff-since
-...</pre></div><div><p class="note">2. AI 给出的答案</p><pre class="out">The deliberately injected leak in main/main.c: s_leak_sink = malloc(2048) executed once per main
-loop iteration while s_fault == FAULT_HEAP [E98]. The pack&#x27;s own provenance states the fault is
-injected on purpose [E3], the capture is taken by tools/fault_matrix.py --port COM19 [E4], and the
-fault is armed at run time over the console, where FAULT heap means &quot;leak 2 KB per loop&quot; [E98].</pre></div><div><p class="note">3. 拿回证据包里核对（audit）</p><pre class="out">MCU-INSIGHT ANSWER AUDIT
-citations   : 50 distinct of 126 in the pack (99 available)
-unknown id  : none
-unknown name: none
-uncited line: 0 (a warning, not an error)
-
-RESULT: OK</pre></div></div><p class="note">想让它用中文回答，加一个参数：</p><pre class="run">python -m mcu_insight diagnose --db captures/board.db --config budgets/my-board.json --lang zh --out prompt.txt</pre><p class="note">证据编号 [E12] 和指标名保持工具里的原样，因为它们是标识符，翻译了就对不上；中文的是说明和回答。</p><p class="note">它拿回来的诊断固定是这四段：</p><ul><li>根因：最可能的那一个，给一个置信度，再列出支撑它的证据编号</li><li>其它可能：还有什么会造成同样现象，哪个观察能把它排除</li><li>修复：针对根因的最小改动</li><li>验证：跑哪条命令、哪个指标该动、大致动多少</li></ul><pre class="run">cd &lt;工具仓库&gt;
-python -m mcu_insight audit --pack prompt.txt --answer answer.md</pre><p class="note">最后一步是核对：答案里每个 [E12] 必须在证据包里真的存在；引用了不存在的编号，直接判失败。</p></div></section>
-<section><h2>所以它到底值在哪</h2><ul>
-<li><b>它看见 AI 看不见的东西。</b>模型能读你的代码，但读不到你板子上：栈剩 512 还是 256 字节、堆最少剩 24KB 还是 4KB、推理 P99 是 30ms 还是 55ms。这些只有量出来才有。</li><li><b>它不让 AI 瞎编。</b>所有事实都带编号，答案必须引用；核对时出现不存在的编号就判失败。没有这一层，诊断只是听起来有道理。</li><li><b>它能回答为什么这次变差了。</b>有基线做对照（版本、采集时长、每个指标的斜率），所以分得清是真的变差了，还是这次只是采得短。</li>
-</ul><p class="note">一句话：检测靠规则和统计，解释靠 AI。工具负责拿到证据，AI 负责讲道理，而这两者之间的引用关系可以被机器核对。</p></section>
-<section><h2>最后你手上有什么</h2><p class="note">跑完整条流程，多出来的是这几样。全部在你自己电脑上，没有云端副本。</p><ul>
-<li><b>report.html</b> —— 给人看的：双击打开，一页看完固件占多少、哪里紧张。</li><li><b>captures/board.db</b> —— 你自己的数据：以后的分析都读它，不用再插板子。</li><li><b>budgets/…-baseline.json</b> —— 给下一次改动：自动对比，告诉你哪一项变差了。</li><li><b>prompt.txt 和 answer.md</b> —— 你和 AI 的一来一回：证据包，加它给出的诊断。</li><li><b>check 的退出码</b> —— 给 CI：0 通过、1 不通过，可以直接卡流水线。</li>
-</ul></section>
-<footer>本页每段输出都是拿本仓库里已提交的采集和构建产物真跑出来的。重新生成：<code>python tools/build_guide.py</code>。</footer>
+<section><h2>最后你手上有什么</h2>
+<ul>
+<li>一份 <code>analyze.txt</code>：固件占多少，还差多少到分区上限</li>
+<li>一份 <code>report.html</code>：图表 + 阈值判定，双击就能看，不用服务器</li>
+<li>一个退出码：<code>0</code> 通过，非 0 失败，可以直接卡 CI</li>
+</ul>
+<p class="note">全部在你自己电脑上，没有云端副本。</p>
+</section>
 </div></body></html>
